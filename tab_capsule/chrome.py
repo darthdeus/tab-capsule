@@ -32,6 +32,7 @@ CMD_LAST_ACTIVE_TIME = 21
 CMD_NAV_PRUNED = 24
 
 SKIP_URLS = {"", "about:blank", "chrome://newtab/", "chrome://new-tab-page/"}
+_HISTORY_SUFFIXES = ("", "-journal", "-wal")
 
 
 def webkit_to_unix(us: object) -> float | None:
@@ -264,6 +265,25 @@ def newest_session_file(profile_path: str | os.PathLike[str]) -> str | None:
     return max(files, key=os.path.getmtime) if files else None
 
 
+def _file_version(path: str) -> tuple[int, ...] | None:
+    try:
+        stat = os.stat(path)
+    except FileNotFoundError:
+        return None
+    return stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+
+def _copy_history(source: str, destination: str) -> None:
+    # Chrome can hold an exclusive SQLite lock. Copy without opening the source,
+    # and reject the copy if any source file changed during capture.
+    versions = [_file_version(source + suffix) for suffix in _HISTORY_SUFFIXES]
+    for suffix, version in zip(_HISTORY_SUFFIXES, versions):
+        if not suffix or version is not None:
+            shutil.copyfile(source + suffix, destination + suffix)
+    if versions != [_file_version(source + suffix) for suffix in _HISTORY_SUFFIXES]:
+        raise sqlite3.OperationalError("History changed while copying")
+
+
 def import_history_file(
     db: sqlite3.Connection, profile: str, history_path: str | os.PathLike[str], retries: int = 3
 ) -> int:
@@ -271,26 +291,23 @@ def import_history_file(
     if retries < 1:
         raise ValueError("retries must be at least 1")
     history_path = os.fspath(history_path)
-    last_err: sqlite3.DatabaseError | None = None
+    last_err: sqlite3.DatabaseError | FileNotFoundError | None = None
     for attempt in range(retries):
-        with tempfile.TemporaryDirectory(prefix="tab-capsule-") as tmp:
-            dst = os.path.join(tmp, "History")
-            shutil.copyfile(history_path, dst)
-            for suffix in ("-journal", "-wal"):
-                if os.path.exists(history_path + suffix):
-                    shutil.copyfile(history_path + suffix, dst + suffix)
-            try:
+        try:
+            with tempfile.TemporaryDirectory(prefix="tab-capsule-") as tmp:
+                dst = os.path.join(tmp, "History")
+                _copy_history(history_path, dst)
                 # Open only the copy for recovery; SQLite rebuilds WAL shared-memory state.
                 with closing(sqlite3.connect(dst)) as source:
                     rows = source.execute(
                         "SELECT v.visit_time, u.url, u.title, v.transition, v.visit_duration"
                         " FROM visits v JOIN urls u ON u.id = v.url"
                     ).fetchall()
-            except sqlite3.DatabaseError as e:  # caught Chrome mid-write: retry
-                last_err = e
-                if attempt + 1 < retries:
-                    time.sleep(1 + attempt)
-                continue
+        except (sqlite3.DatabaseError, FileNotFoundError) as error:
+            last_err = error
+            if attempt + 1 < retries:
+                time.sleep(1 + attempt)
+            continue
         before = db.total_changes
         with db:
             db.executemany(

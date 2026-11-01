@@ -86,6 +86,9 @@ checks are in `tests/frontend.test.cjs`.
   deduplicate per profile/URL at the latest matching day (up to 100 displayed).
 - The full archive is embedded in the HTML; large-archive performance is unmeasured.
 - The parser handles a subset of Chrome's session format; other browsers are unverified.
+- History capture retries if the database or its journals change during copying.
+  This is a best-effort live capture, not a filesystem snapshot; persistent changes
+  or unreadable files cause a reported failure without importing that capture.
 
 ## Privacy
 

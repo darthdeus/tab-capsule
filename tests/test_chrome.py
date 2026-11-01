@@ -1,13 +1,36 @@
 """Chrome session parsing and History import tests."""
 
+import multiprocessing
 import os
+import shutil
 import sqlite3
 import tempfile
 import time
 import unittest
+from contextlib import closing, contextmanager
+from unittest.mock import patch
 
 from tab_capsule import chrome, storage
 from tests.fixtures import Snss, make_history, urls
+
+
+def _history_writer(path, control):
+    with closing(sqlite3.connect(path)) as writer:
+        writer.execute("PRAGMA locking_mode=EXCLUSIVE")
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("PRAGMA wal_autocheckpoint=0")
+        writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        next_id = writer.execute("SELECT MAX(id) + 1 FROM visits").fetchone()[0]
+        control.send("ready")
+        while control.recv() == "write":
+            writer.execute(
+                "INSERT INTO visits(id,url,visit_time) VALUES(?,1,?)",
+                (next_id, chrome.unix_to_webkit(1788436800 + next_id)),
+            )
+            writer.commit()
+            writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            control.send(next_id)
+            next_id += 1
 
 
 class SnssTest(unittest.TestCase):
@@ -121,6 +144,31 @@ class SnssTest(unittest.TestCase):
 
 
 class HistoryTest(unittest.TestCase):
+    @contextmanager
+    def writing_history(self):
+        context = multiprocessing.get_context("spawn")
+        control, worker = context.Pipe()
+        process = context.Process(target=_history_writer, args=(self.hist, worker))
+        process.start()
+        worker.close()
+        try:
+            self.assertTrue(control.poll(10), "history writer did not start")
+            self.assertEqual(control.recv(), "ready")
+            yield control
+        finally:
+            if process.is_alive():
+                control.send("stop")
+            process.join(5)
+            if process.is_alive():
+                process.terminate()
+                process.join(5)
+            control.close()
+
+    def commit_and_checkpoint(self, control):
+        control.send("write")
+        self.assertTrue(control.poll(10), "history writer did not finish its transaction")
+        return control.recv()
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.hist = os.path.join(self.tmp.name, "History")
@@ -213,3 +261,65 @@ class HistoryTest(unittest.TestCase):
         for retries in (0, -1):
             with self.subTest(retries=retries), self.assertRaisesRegex(ValueError, "retries"):
                 chrome.import_history_file(self.db, "Default", self.hist, retries=retries)
+
+    def test_copy_retries_after_concurrent_commit_and_checkpoint(self):
+        copy_file = shutil.copyfile
+        copies = 0
+        with self.writing_history() as control:
+
+            def copy_then_write(source, destination):
+                nonlocal copies
+                result = copy_file(source, destination)
+                if source == self.hist:
+                    copies += 1
+                    if copies == 1:
+                        self.assertEqual(self.commit_and_checkpoint(control), 4)
+                return result
+
+            with (
+                patch("tab_capsule.chrome.shutil.copyfile", side_effect=copy_then_write),
+                patch("tab_capsule.chrome.time.sleep") as sleep,
+            ):
+                self.assertEqual(chrome.import_history_file(self.db, "Default", self.hist), 4)
+            self.assertEqual(copies, 2)
+            sleep.assert_called_once_with(1)
+            self.assertEqual(self.count(), 4)
+
+    def test_continuous_source_changes_exhaust_retries_without_modifying_archive(self):
+        copy_file = shutil.copyfile
+        with self.writing_history() as control:
+            chrome.import_history_file(self.db, "Default", self.hist)
+
+            def copy_then_write(source, destination):
+                result = copy_file(source, destination)
+                if source == self.hist:
+                    self.commit_and_checkpoint(control)
+                return result
+
+            with (
+                patch("tab_capsule.chrome.shutil.copyfile", side_effect=copy_then_write),
+                patch("tab_capsule.chrome.time.sleep") as sleep,
+                self.assertRaisesRegex(sqlite3.OperationalError, "changed while copying"),
+            ):
+                chrome.import_history_file(self.db, "Default", self.hist, retries=3)
+            self.assertEqual(sleep.call_count, 2)
+            self.assertEqual(self.count(), 3)
+
+    def test_transient_copy_failure_is_retried(self):
+        copy_file = shutil.copyfile
+        copies = 0
+
+        def disappear_once(source, destination):
+            nonlocal copies
+            copies += 1
+            if copies == 1:
+                raise FileNotFoundError("synthetic source rotation")
+            return copy_file(source, destination)
+
+        with (
+            patch("tab_capsule.chrome.shutil.copyfile", side_effect=disappear_once),
+            patch("tab_capsule.chrome.time.sleep") as sleep,
+        ):
+            self.assertEqual(chrome.import_history_file(self.db, "Default", self.hist), 3)
+        self.assertEqual(copies, 2)
+        sleep.assert_called_once_with(1)
