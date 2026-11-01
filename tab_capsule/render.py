@@ -22,6 +22,18 @@ def local_day(t: float) -> str:
 
 
 def build_data(db: sqlite3.Connection) -> PageData:
+    """Read one archive view without committing or rolling back the caller's writes."""
+    owns_transaction = not db.in_transaction
+    if owns_transaction:
+        db.execute("BEGIN")
+    try:
+        return _build_data(db)
+    finally:
+        if owns_transaction and db.in_transaction:
+            db.execute("ROLLBACK")
+
+
+def _build_data(db: sqlite3.Connection) -> PageData:
     """Compact JSON-able dict for the HTML page.
 
     S: string table (urls and titles). P: profile display names.

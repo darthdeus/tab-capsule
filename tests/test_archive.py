@@ -180,3 +180,57 @@ class SnapshotRenderTest(unittest.TestCase):
 
         self.assertEqual(output.read_bytes(), previous)
         self.assertEqual(list(Path(self.data_dir).glob("*.tmp")), [])
+
+    def test_page_data_uses_one_database_view_during_concurrent_collection(self):
+        self.db.execute("PRAGMA journal_mode=WAL")
+        storage.set_profile_name(self.db, "Default", "Existing")
+        self.db.execute(
+            "INSERT INTO visits(profile,visit_time,url,title) VALUES(?,?,?,?)",
+            ("Default", chrome.unix_to_webkit(1788436800), "https://example.org/old", "Old"),
+        )
+        self.db.commit()
+        committed = False
+        with closing(storage.open_db(self.data_dir)) as writer:
+
+            def collect_after_profiles_were_read(sql):
+                nonlocal committed
+                if not committed and sql.startswith("SELECT visit_time, url, title"):
+                    committed = True
+                    writer.execute("INSERT INTO profiles(dir,name) VALUES('Profile 1','New')")
+                    writer.execute(
+                        "INSERT INTO visits(profile,visit_time,url,title) VALUES(?,?,?,?)",
+                        (
+                            "Profile 1",
+                            chrome.unix_to_webkit(1788436860),
+                            "https://example.org/new",
+                            "New",
+                        ),
+                    )
+                    writer.commit()
+
+            self.db.set_trace_callback(collect_after_profiles_were_read)
+            try:
+                data = render.build_data(self.db)
+            finally:
+                self.db.set_trace_callback(None)
+
+        self.assertTrue(committed)
+        self.assertEqual(data["P"], ["Existing"])
+        self.assertEqual(len(data["V"]), 1)
+        self.assertFalse(self.db.in_transaction)
+        next_render = render.build_data(self.db)
+        self.assertEqual(next_render["P"], ["Existing", "New"])
+        self.assertEqual(len(next_render["V"]), 2)
+
+    def test_page_data_preserves_caller_owned_transaction(self):
+        self.db.execute("INSERT INTO profiles(dir,name) VALUES('Default','Pending')")
+        self.assertEqual(render.build_data(self.db)["P"], ["Pending"])
+        self.assertTrue(self.db.in_transaction)
+        self.db.rollback()
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM profiles").fetchone()[0], 0)
+
+    def test_page_data_releases_owned_transaction_after_query_failure(self):
+        self.db.execute("DROP TABLE visits")
+        with self.assertRaises(sqlite3.OperationalError):
+            render.build_data(self.db)
+        self.assertFalse(self.db.in_transaction)
