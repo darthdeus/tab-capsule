@@ -6,6 +6,7 @@ import gzip
 import json
 import os
 import sqlite3
+import tempfile
 import time
 from pathlib import Path
 from typing import cast
@@ -134,9 +135,13 @@ def extract_data(html: str) -> PageData:
 def cmd_render(db: sqlite3.Connection, data_dir: str | os.PathLike[str], log: Log = print) -> None:
     html = render_html(build_data(db))
     out = os.path.join(data_dir, "index.html")
-    tmp = out + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(html)
-    os.replace(tmp, out)
+    temporary = tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=data_dir, prefix=".index-", suffix=".tmp", delete=False
+    )
+    try:
+        with temporary as page:
+            page.write(html)
+        os.replace(temporary.name, out)
+    finally:
+        Path(temporary.name).unlink(missing_ok=True)
     log(f"wrote {out} ({len(html) // 1024} KiB)")

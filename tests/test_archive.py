@@ -5,6 +5,11 @@ import sqlite3
 import tempfile
 import time
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
+from pathlib import Path
+from threading import Barrier
+from unittest.mock import patch
 
 from tab_capsule import chrome, render, storage
 from tests.fixtures import make_history, win
@@ -127,3 +132,51 @@ class SnapshotRenderTest(unittest.TestCase):
         )
         self.assertIn("Nový 🐴", S)
         self.assertIn("A </script> & <b>", S)
+
+    def test_concurrent_renders_publish_complete_pages(self):
+        barrier = Barrier(2, timeout=5)
+        replace_file = os.replace
+        temporary_names = []
+        complete_pages = []
+
+        def replace_together(source, destination):
+            temporary_names.append(source)
+            complete_pages.append(Path(source).read_text(encoding="utf-8"))
+            barrier.wait()
+            return replace_file(source, destination)
+
+        def render_profile(profile):
+            with closing(storage.open_db(Path(self.tmp.name) / profile)) as db:
+                storage.set_profile_name(db, "Default", profile)
+                render.cmd_render(db, self.data_dir, log=lambda _: None)
+
+        with patch("tab_capsule.render.os.replace", side_effect=replace_together):
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                futures = [executor.submit(render_profile, profile) for profile in ("One", "Two")]
+                for future in futures:
+                    future.result(timeout=10)
+
+        self.assertEqual(len(set(temporary_names)), 2)
+        output = Path(self.data_dir) / "index.html"
+        html = output.read_text(encoding="utf-8")
+        self.assertIn(html, complete_pages)
+        self.assertIn(render.extract_data(html)["P"], [["One"], ["Two"]])
+        self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(list(Path(self.data_dir).glob("*.tmp")), [])
+
+    def test_failed_publish_preserves_previous_page_and_removes_temporary_file(self):
+        render.cmd_render(self.db, self.data_dir, log=lambda _: None)
+        output = Path(self.data_dir) / "index.html"
+        previous = output.read_bytes()
+        storage.set_profile_name(self.db, "Default", "New data")
+
+        with (
+            patch(
+                "tab_capsule.render.os.replace", side_effect=OSError("synthetic publish failure")
+            ),
+            self.assertRaisesRegex(OSError, "synthetic publish failure"),
+        ):
+            render.cmd_render(self.db, self.data_dir, log=lambda _: None)
+
+        self.assertEqual(output.read_bytes(), previous)
+        self.assertEqual(list(Path(self.data_dir).glob("*.tmp")), [])
