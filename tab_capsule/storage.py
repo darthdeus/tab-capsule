@@ -52,44 +52,43 @@ def store_snapshot(
     """Insert a snapshot if the tab set changed; else bump last_seen_at. Returns (snapshot_id, created)."""
     now = int(now if now is not None else time.time())
     fp = fingerprint(windows)
-    row = db.execute(
-        "SELECT id, fingerprint FROM snapshots WHERE profile=? ORDER BY taken_at DESC, id DESC LIMIT 1",
-        (profile,),
-    ).fetchone()
-    if row and row[1] == fp:
-        db.execute("UPDATE snapshots SET last_seen_at=? WHERE id=?", (now, row[0]))
-        db.commit()
-        return row[0], False
-    cur = db.execute(
-        "INSERT INTO snapshots(profile, taken_at, last_seen_at, fingerprint, source) VALUES(?,?,?,?,?)",
-        (profile, now, now, fp, source),
-    )
-    sid = cur.lastrowid
-    assert sid is not None
-    rows = []
-    for window_index, tabs in enumerate(windows):
-        for tab_index, tab in enumerate(tabs):
-            last_active = tab.get("last_active")
-            nav_time = tab.get("nav_time")
-            rows.append(
-                (
-                    sid,
-                    window_index,
-                    tab_index,
-                    tab["url"],
-                    tab["title"],
-                    int(bool(tab["pinned"])),
-                    int(last_active) if last_active else None,
-                    int(nav_time) if nav_time else None,
+    with db:
+        row = db.execute(
+            "SELECT id, fingerprint FROM snapshots WHERE profile=? ORDER BY taken_at DESC, id DESC LIMIT 1",
+            (profile,),
+        ).fetchone()
+        if row and row[1] == fp:
+            db.execute("UPDATE snapshots SET last_seen_at=? WHERE id=?", (now, row[0]))
+            return row[0], False
+        cur = db.execute(
+            "INSERT INTO snapshots(profile, taken_at, last_seen_at, fingerprint, source) VALUES(?,?,?,?,?)",
+            (profile, now, now, fp, source),
+        )
+        sid = cur.lastrowid
+        assert sid is not None
+        rows = []
+        for window_index, tabs in enumerate(windows):
+            for tab_index, tab in enumerate(tabs):
+                last_active = tab.get("last_active")
+                nav_time = tab.get("nav_time")
+                rows.append(
+                    (
+                        sid,
+                        window_index,
+                        tab_index,
+                        tab["url"],
+                        tab["title"],
+                        int(bool(tab["pinned"])),
+                        int(last_active) if last_active else None,
+                        int(nav_time) if nav_time else None,
+                    )
                 )
-            )
-    db.executemany(
-        "INSERT INTO snapshot_tabs(snapshot_id, window_idx, tab_idx, url, title, pinned, last_active, nav_time)"
-        " VALUES(?,?,?,?,?,?,?,?)",
-        rows,
-    )
-    db.commit()
-    return sid, True
+        db.executemany(
+            "INSERT INTO snapshot_tabs(snapshot_id, window_idx, tab_idx, url, title, pinned, last_active, nav_time)"
+            " VALUES(?,?,?,?,?,?,?,?)",
+            rows,
+        )
+        return sid, True
 
 
 def set_profile_name(db: sqlite3.Connection, d: str, name: str) -> None:

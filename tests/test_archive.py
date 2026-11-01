@@ -1,6 +1,7 @@
 """Snapshot persistence and rendered archive data tests."""
 
 import os
+import sqlite3
 import tempfile
 import time
 import unittest
@@ -64,6 +65,28 @@ class SnapshotRenderTest(unittest.TestCase):
         storage.store_snapshot(self.db, "Default", w, now=1000)
         _, created = storage.store_snapshot(self.db, "Profile 1", w, now=1000)
         self.assertTrue(created)
+
+    def test_failed_snapshot_rolls_back_all_rows_and_can_be_retried(self):
+        storage.store_snapshot(self.db, "Default", [win(("https://old.example/", "Old"))], now=1000)
+        self.db.executescript("""
+            CREATE TRIGGER fail_second_tab BEFORE INSERT ON snapshot_tabs
+            WHEN NEW.tab_idx = 1
+            BEGIN SELECT RAISE(ABORT, 'synthetic tab failure'); END;
+        """)
+        windows = [win(("https://a.example/", "A"), ("https://b.example/", "B"))]
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "synthetic tab failure"):
+            storage.store_snapshot(self.db, "Default", windows, now=2000)
+
+        # A later successful write must not commit a partial snapshot from the failure.
+        storage.set_profile_name(self.db, "Default", "Synthetic")
+        self.assertEqual(len(self.snaps()), 1)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM snapshot_tabs").fetchone()[0], 1)
+
+        self.db.execute("DROP TRIGGER fail_second_tab")
+        _, created = storage.store_snapshot(self.db, "Default", windows, now=2000)
+        self.assertTrue(created)
+        self.assertEqual(len(self.snaps()), 2)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM snapshot_tabs").fetchone()[0], 3)
 
     def test_render_embeds_valid_data(self):
         day1 = time.mktime((2026, 9, 1, 12, 0, 0, 0, 0, -1))
