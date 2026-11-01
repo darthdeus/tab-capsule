@@ -20,7 +20,7 @@ check: check-python test-browser
 
 # Run Python checks without Node or a browser.
 check-python: lint test
-    uv run --locked {{ quote(python) }} -m py_compile tab_capsule.py demo.py
+    uv run --locked {{ quote(python) }} -m compileall -q tab_capsule tests tab_capsule.py demo.py
 
 # Check Python lint, import order and formatting.
 lint:

@@ -57,12 +57,19 @@ development tools. To update Ruff, run `uv lock --upgrade-package ruff` and reru
 the checks. Tests use synthetic data and temporary browser profiles. Browser checks
 open the HTML directly and fail on external requests or JavaScript errors.
 
-`tab_capsule.py` handles collection, SQLite, CLI and rendering. Its `build_data()`
-compacts the archive and `render_html()` embeds it with the HTML/CSS/JavaScript in
-`frontend/`. Keep that directory beside the Python module. Edit frontend sources,
-rerun `just demo` or `just cli render`, and reload the page; no build step is needed.
-The generated HTML can be moved on its own. In JavaScript, start at
-`load()` → `init()` → `route()`. Python tests are in `test_tab_capsule.py`; browser
+`tab_capsule.py` launches the `tab_capsule/` package; `python3 -m tab_capsule` works
+too. The package has four modules:
+
+- `chrome.py`: session parsing, profile discovery and History import.
+- `storage.py`: SQLite schema, profiles and snapshot writes.
+- `render.py`: archive reads, compact page data and self-contained HTML assembly.
+- `cli.py`: command parsing, collection orchestration and statistics.
+
+Keep `tab_capsule.py`, `tab_capsule/` and `frontend/` together when copying the
+source tool. Edit frontend sources, rerun `just demo` or `just cli render`, and
+reload the page; no build step is needed. The generated HTML can be moved on its
+own. In JavaScript, start at `load()` → `init()` → `route()`. Python tests live in
+`tests/test_*.py`, with shared synthetic builders in `tests/fixtures.py`; browser
 checks are in `tests/frontend.test.cjs`.
 
 ## Behavior and limitations

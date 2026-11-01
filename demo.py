@@ -5,7 +5,7 @@ import argparse
 import tempfile
 from pathlib import Path
 
-import tab_capsule as tc
+from tab_capsule import chrome, render, storage
 
 
 def main():
@@ -20,28 +20,35 @@ def main():
     ]
     base = 1788264000  # fixed synthetic timestamp
     with tempfile.TemporaryDirectory(prefix="tab-capsule-demo-") as tmp:
-        db = tc.open_db(tmp)
+        db = storage.open_db(tmp)
         try:
-            tc.set_profile_name(db, "Default", "Demo")
+            storage.set_profile_name(db, "Default", "Demo")
             for day in range(3):
                 tabs = [
                     {"url": u, "title": t, "pinned": i == 0}
                     for i, (u, t) in enumerate(pages[: day + 2])
                 ]
-                tc.store_snapshot(db, "Default", [tabs], now=base + day * 86400)
+                storage.store_snapshot(db, "Default", [tabs], now=base + day * 86400)
                 db.executemany(
                     "INSERT INTO visits(profile,visit_time,url,title,transition,visit_duration) VALUES(?,?,?,?,?,?)",
                     [
-                        ("Default", tc.unix_to_webkit(base + day * 86400 + i * 300), u, t, 1, 30)
+                        (
+                            "Default",
+                            chrome.unix_to_webkit(base + day * 86400 + i * 300),
+                            u,
+                            t,
+                            1,
+                            30,
+                        )
                         for i, (u, t) in enumerate(pages)
                     ],
                 )
             db.commit()
-            data = tc.build_data(db)
+            data = render.build_data(db)
             data["generated"] = base + 3 * 86400
             args.output_dir.mkdir(parents=True, exist_ok=True)
             dest = args.output_dir / "index.html"
-            dest.write_text(tc.render_html(data), encoding="utf-8")
+            dest.write_text(render.render_html(data), encoding="utf-8")
             print(dest)
         finally:
             db.close()

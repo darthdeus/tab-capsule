@@ -6,9 +6,10 @@ HTML output unless the user chooses otherwise.
 
 ## Structure
 
-- `tab_capsule.py`: SNSS parser, collection, SQLite storage, CLI, HTML assembly.
+- `tab_capsule.py`: source-checkout CLI entry point; `python -m tab_capsule` also works.
+- `tab_capsule/`: Chrome parsing/import, SQLite writes, page rendering and CLI modules.
 - `frontend/capsule.{html,css,js}`: readable page sources, inlined when rendering.
-- `test_tab_capsule.py`: synthetic fixtures and collection/render-data tests.
+- `tests/test_*.py`, `tests/fixtures.py`: grouped Python tests and synthetic fixtures.
 - `tests/frontend.test.cjs`: synthetic standalone-page browser checks.
 - `demo.py`: deterministic synthetic demonstration; never reads actual browser data.
 - `justfile`: development checks, synthetic demo and CLI shortcuts.

@@ -86,7 +86,7 @@ async function fixture(name, data) {
     python,
     [
       "-c",
-      "import json, sys; import tab_capsule as tc; sys.stdout.write(tc.render_html(json.load(sys.stdin)))",
+      "import json, sys; from tab_capsule.render import render_html; sys.stdout.write(render_html(json.load(sys.stdin)))",
     ],
     { cwd: root, input: JSON.stringify(data), encoding: "utf8" },
   );
