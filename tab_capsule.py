@@ -12,7 +12,21 @@ Each run, for every Chrome profile:
 Python stdlib only. Data dir: ~/.local/share/tab-capsule (override: --data-dir or
 TAB_CAPSULE_DIR). The data is private browsing history: it is never published anywhere.
 """
-import argparse, base64, datetime, glob, gzip, hashlib, json, os, shutil, sqlite3, struct, sys, tempfile, time
+
+import argparse
+import base64
+import datetime
+import glob
+import gzip
+import hashlib
+import json
+import os
+import shutil
+import sqlite3
+import struct
+import sys
+import tempfile
+import time
 from pathlib import Path
 
 DEFAULT_CHROME_DIR = os.path.expanduser("~/.config/google-chrome")
@@ -55,6 +69,7 @@ def unix_to_webkit(t):
 
 # ---------------------------------------------------------------- SNSS parsing
 
+
 def iter_snss_commands(data):
     """Yield (command_id, payload) from an SNSS file's bytes. Tolerates a truncated tail."""
     if len(data) < 8 or data[:4] != b"SNSS":
@@ -65,7 +80,7 @@ def iter_snss_commands(data):
         size = struct.unpack_from("<H", data, p)[0]
         if size == 0 or p + 2 + size > n:
             return  # end marker or partial trailing record (Chrome mid-write)
-        yield data[p + 2], data[p + 3:p + 2 + size]
+        yield data[p + 2], data[p + 3 : p + 2 + size]
         p += 2 + size
 
 
@@ -76,13 +91,13 @@ class PickleReader:
         if len(buf) < 4:
             raise ValueError("pickle too short")
         size = struct.unpack_from("<I", buf, 0)[0]
-        self.buf = buf[4:4 + size]
+        self.buf = buf[4 : 4 + size]
         self.p = 0
 
     def _take(self, n):
         if self.p + n > len(self.buf):
             raise ValueError("pickle underflow")
-        b = self.buf[self.p:self.p + n]
+        b = self.buf[self.p : self.p + n]
         self.p += (n + 3) & ~3
         return b
 
@@ -114,13 +129,13 @@ def parse_navigation(payload):
     title = r.string16()
     ts = None
     try:  # best-effort tail; the url/title above are the strict part
-        r.string()   # encoded page state
-        r.int32()    # transition
-        r.int32()    # type mask
-        r.string()   # referrer url
-        r.int32()    # referrer policy
-        r.string()   # original request url
-        r.int32()    # is overriding user agent (bool)
+        r.string()  # encoded page state
+        r.int32()  # transition
+        r.int32()  # type mask
+        r.string()  # referrer url
+        r.int32()  # referrer policy
+        r.string()  # original request url
+        r.int32()  # is overriding user agent (bool)
         ts = webkit_to_unix(r.int64())
     except ValueError:
         pass
@@ -134,13 +149,22 @@ def replay_session(data):
     Windows keep the order in which Chrome first mentioned them; closed windows/tabs and
     tabs without navigations are dropped.
     """
-    tabs = {}      # tab_id -> state
-    windows = {}   # window_id -> {"order": n, "type": t, "selected": i}
+    tabs = {}  # tab_id -> state
+    windows = {}  # window_id -> {"order": n, "type": t, "selected": i}
     closed_windows = set()
 
     def tab(tid):
-        return tabs.setdefault(tid, {"window": None, "index": 0, "navs": {}, "selected": None,
-                                     "pinned": False, "last_active": None})
+        return tabs.setdefault(
+            tid,
+            {
+                "window": None,
+                "index": 0,
+                "navs": {},
+                "selected": None,
+                "pinned": False,
+                "last_active": None,
+            },
+        )
 
     def window(wid):
         if wid not in windows:
@@ -211,8 +235,19 @@ def replay_session(data):
             url, title, ts = t["navs"][sel]
             if url in SKIP_URLS and not title:
                 continue
-            wtabs.append((t["index"], tid, {"url": url, "title": title, "pinned": t["pinned"],
-                                            "last_active": t["last_active"], "nav_time": ts}))
+            wtabs.append(
+                (
+                    t["index"],
+                    tid,
+                    {
+                        "url": url,
+                        "title": title,
+                        "pinned": t["pinned"],
+                        "last_active": t["last_active"],
+                        "nav_time": ts,
+                    },
+                )
+            )
         wtabs.sort(key=lambda x: (x[0], x[1]))
         if wtabs:
             out.append([x[2] for x in wtabs])
@@ -220,6 +255,7 @@ def replay_session(data):
 
 
 # ---------------------------------------------------------------- profiles
+
 
 def list_profiles(chrome_dir):
     """[(dir_name, display_name, path)] for profiles that have Sessions/ or History."""
@@ -235,7 +271,9 @@ def list_profiles(chrome_dir):
         return out
     for d in sorted(os.listdir(chrome_dir)):
         path = os.path.join(chrome_dir, d)
-        if os.path.isdir(os.path.join(path, "Sessions")) or os.path.isfile(os.path.join(path, "History")):
+        if os.path.isdir(os.path.join(path, "Sessions")) or os.path.isfile(
+            os.path.join(path, "History")
+        ):
             out.append((d, names.get(d, d), path))
     return out
 
@@ -273,7 +311,11 @@ def open_db(data_dir):
 def fingerprint(windows):
     """Tab-set identity: window/tab position, url, pinned. Titles are excluded on purpose
     (unread counts like "(3) Inbox" would otherwise make a new snapshot every hour)."""
-    key = [[w, i, t["url"], bool(t["pinned"])] for w, tabs in enumerate(windows) for i, t in enumerate(tabs)]
+    key = [
+        [w, i, t["url"], bool(t["pinned"])]
+        for w, tabs in enumerate(windows)
+        for i, t in enumerate(tabs)
+    ]
     return hashlib.sha1(json.dumps(key, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -281,28 +323,46 @@ def store_snapshot(db, profile, windows, now=None, source=None):
     """Insert a snapshot if the tab set changed; else bump last_seen_at. Returns (snapshot_id, created)."""
     now = int(now if now is not None else time.time())
     fp = fingerprint(windows)
-    row = db.execute("SELECT id, fingerprint FROM snapshots WHERE profile=? ORDER BY taken_at DESC, id DESC LIMIT 1",
-                     (profile,)).fetchone()
+    row = db.execute(
+        "SELECT id, fingerprint FROM snapshots WHERE profile=? ORDER BY taken_at DESC, id DESC LIMIT 1",
+        (profile,),
+    ).fetchone()
     if row and row[1] == fp:
         db.execute("UPDATE snapshots SET last_seen_at=? WHERE id=?", (now, row[0]))
         db.commit()
         return row[0], False
-    cur = db.execute("INSERT INTO snapshots(profile, taken_at, last_seen_at, fingerprint, source) VALUES(?,?,?,?,?)",
-                     (profile, now, now, fp, source))
+    cur = db.execute(
+        "INSERT INTO snapshots(profile, taken_at, last_seen_at, fingerprint, source) VALUES(?,?,?,?,?)",
+        (profile, now, now, fp, source),
+    )
     sid = cur.lastrowid
     db.executemany(
         "INSERT INTO snapshot_tabs(snapshot_id, window_idx, tab_idx, url, title, pinned, last_active, nav_time)"
         " VALUES(?,?,?,?,?,?,?,?)",
-        [(sid, w, i, t["url"], t["title"], int(bool(t["pinned"])),
-          int(t["last_active"]) if t.get("last_active") else None,
-          int(t["nav_time"]) if t.get("nav_time") else None)
-         for w, tabs in enumerate(windows) for i, t in enumerate(tabs)])
+        [
+            (
+                sid,
+                w,
+                i,
+                t["url"],
+                t["title"],
+                int(bool(t["pinned"])),
+                int(t["last_active"]) if t.get("last_active") else None,
+                int(t["nav_time"]) if t.get("nav_time") else None,
+            )
+            for w, tabs in enumerate(windows)
+            for i, t in enumerate(tabs)
+        ],
+    )
     db.commit()
     return sid, True
 
 
 def set_profile_name(db, d, name):
-    db.execute("INSERT INTO profiles(dir, name) VALUES(?,?) ON CONFLICT(dir) DO UPDATE SET name=excluded.name", (d, name))
+    db.execute(
+        "INSERT INTO profiles(dir, name) VALUES(?,?) ON CONFLICT(dir) DO UPDATE SET name=excluded.name",
+        (d, name),
+    )
     db.commit()
 
 
@@ -320,21 +380,26 @@ def import_history_file(db, profile, history_path, retries=3):
                 src = sqlite3.connect(dst)  # read-write so a hot journal gets rolled back
                 rows = src.execute(
                     "SELECT v.visit_time, u.url, u.title, v.transition, v.visit_duration"
-                    " FROM visits v JOIN urls u ON u.id = v.url").fetchall()
+                    " FROM visits v JOIN urls u ON u.id = v.url"
+                ).fetchall()
                 src.close()
             except sqlite3.DatabaseError as e:  # caught Chrome mid-write: retry
                 last_err = e
                 time.sleep(1 + attempt)
                 continue
         before = db.total_changes
-        db.executemany("INSERT OR IGNORE INTO visits(profile, visit_time, url, title, transition, visit_duration)"
-                       " VALUES(?,?,?,?,?,?)", [(profile,) + tuple(r) for r in rows])
+        db.executemany(
+            "INSERT OR IGNORE INTO visits(profile, visit_time, url, title, transition, visit_duration)"
+            " VALUES(?,?,?,?,?,?)",
+            [(profile,) + tuple(r) for r in rows],
+        )
         db.commit()
         return db.total_changes - before
     raise last_err
 
 
 # ---------------------------------------------------------------- commands
+
 
 def cmd_snapshot(db, chrome_dir, log=print):
     for d, name, path in list_profiles(chrome_dir):
@@ -354,7 +419,9 @@ def cmd_snapshot(db, chrome_dir, log=print):
             log(f"{d}: no open tabs (profile closed), nothing to snapshot")
             continue
         _, created = store_snapshot(db, d, windows, source=os.path.basename(sf))
-        log(f"{d}: {n} tabs in {len(windows)} windows ({'new snapshot' if created else 'unchanged'})")
+        log(
+            f"{d}: {n} tabs in {len(windows)} windows ({'new snapshot' if created else 'unchanged'})"
+        )
 
 
 def cmd_import_history(db, chrome_dir, log=print):
@@ -394,14 +461,18 @@ def build_data(db):
         return index[s]
 
     names = dict(db.execute("SELECT dir, name FROM profiles"))
-    profiles = sorted(set(names) | {r[0] for r in db.execute("SELECT DISTINCT profile FROM snapshots")}
-                      | {r[0] for r in db.execute("SELECT DISTINCT profile FROM visits")})
+    profiles = sorted(
+        set(names)
+        | {r[0] for r in db.execute("SELECT DISTINCT profile FROM snapshots")}
+        | {r[0] for r in db.execute("SELECT DISTINCT profile FROM visits")}
+    )
     pidx = {p: i for i, p in enumerate(profiles)}
     plabels = [names.get(p) or p for p in profiles]
 
     visits, day_ranges = [], {}
     for vt, url, title, prof, tr in db.execute(
-            "SELECT visit_time, url, title, profile, transition FROM visits ORDER BY visit_time, profile, url"):
+        "SELECT visit_time, url, title, profile, transition FROM visits ORDER BY visit_time, profile, url"
+    ):
         t = (vt - WEBKIT_EPOCH_OFFSET_US) // 1_000_000
         if t <= 0:
             continue
@@ -412,8 +483,10 @@ def build_data(db):
 
     snaps = []
     for prof in profiles:
-        rows = db.execute("SELECT id, taken_at, last_seen_at FROM snapshots WHERE profile=? ORDER BY taken_at, id",
-                          (prof,)).fetchall()
+        rows = db.execute(
+            "SELECT id, taken_at, last_seen_at FROM snapshots WHERE profile=? ORDER BY taken_at, id",
+            (prof,),
+        ).fetchall()
         last_of_day = {}
         for sid, taken, seen in rows:
             last_of_day[local_day(taken)] = (sid, taken, seen)
@@ -422,18 +495,35 @@ def build_data(db):
             sid, taken, seen = last_of_day[day]
             wins, urls = [], set()
             for w, url, title, pinned in db.execute(
-                    "SELECT window_idx, url, title, pinned FROM snapshot_tabs WHERE snapshot_id=? ORDER BY window_idx, tab_idx",
-                    (sid,)):
+                "SELECT window_idx, url, title, pinned FROM snapshot_tabs WHERE snapshot_id=? ORDER BY window_idx, tab_idx",
+                (sid,),
+            ):
                 while len(wins) <= w:
                     wins.append([])
                 urls.add(url)
-                wins[w].append([si(url), si(title), pinned, int(prev_urls is not None and url not in prev_urls)])
-            snaps.append({"p": pidx[prof], "d": day, "t": taken, "s": seen, "w": [x for x in wins if x]})
+                wins[w].append(
+                    [
+                        si(url),
+                        si(title),
+                        pinned,
+                        int(prev_urls is not None and url not in prev_urls),
+                    ]
+                )
+            snaps.append(
+                {"p": pidx[prof], "d": day, "t": taken, "s": seen, "w": [x for x in wins if x]}
+            )
             prev_urls = urls
 
     days = set(day_ranges) | {s["d"] for s in snaps}
     D = [[d] + day_ranges.get(d, [0, 0]) for d in sorted(days, reverse=True)]
-    return {"S": strings, "P": plabels, "V": visits, "D": D, "T": snaps, "generated": int(time.time())}
+    return {
+        "S": strings,
+        "P": plabels,
+        "V": visits,
+        "D": D,
+        "T": snaps,
+        "generated": int(time.time()),
+    }
 
 
 def render_html(data):
@@ -444,15 +534,19 @@ def render_html(data):
     blob = base64.b64encode(gzip.compress(raw, compresslevel=9, mtime=0)).decode("ascii")
     template = (FRONTEND_DIR / "capsule.html").read_text(encoding="utf-8")
     # Inline local sources so the output can be moved and opened directly via file://.
-    return (template.replace("/*STYLE*/", (FRONTEND_DIR / "capsule.css").read_text(encoding="utf-8"))
-            .replace("/*SCRIPT*/", (FRONTEND_DIR / "capsule.js").read_text(encoding="utf-8"))
-            .replace("/*DATA*/", blob))
+    return (
+        template.replace("/*STYLE*/", (FRONTEND_DIR / "capsule.css").read_text(encoding="utf-8"))
+        .replace("/*SCRIPT*/", (FRONTEND_DIR / "capsule.js").read_text(encoding="utf-8"))
+        .replace("/*DATA*/", blob)
+    )
 
 
 def extract_data(html):
     """Inverse of render_html (used by tests and for debugging)."""
-    start = html.index('<script type="application/octet-stream" id="data">') + len('<script type="application/octet-stream" id="data">')
-    blob = html[start:html.index("</script>", start)]
+    start = html.index('<script type="application/octet-stream" id="data">') + len(
+        '<script type="application/octet-stream" id="data">'
+    )
+    blob = html[start : html.index("</script>", start)]
     return json.loads(gzip.decompress(base64.b64decode(blob)))
 
 
@@ -469,20 +563,29 @@ def cmd_render(db, data_dir, log=print):
 
 def cmd_stats(db, log=print):
     names = dict(db.execute("SELECT dir, name FROM profiles"))
-    profs = sorted(set(names) | {r[0] for r in db.execute("SELECT DISTINCT profile FROM visits")}
-                   | {r[0] for r in db.execute("SELECT DISTINCT profile FROM snapshots")})
+    profs = sorted(
+        set(names)
+        | {r[0] for r in db.execute("SELECT DISTINCT profile FROM visits")}
+        | {r[0] for r in db.execute("SELECT DISTINCT profile FROM snapshots")}
+    )
     for p in profs:
-        n, lo, hi = db.execute("SELECT COUNT(*), MIN(visit_time), MAX(visit_time) FROM visits WHERE profile=?", (p,)).fetchone()
+        n, lo, hi = db.execute(
+            "SELECT COUNT(*), MIN(visit_time), MAX(visit_time) FROM visits WHERE profile=?", (p,)
+        ).fetchone()
         ns = db.execute("SELECT COUNT(*) FROM snapshots WHERE profile=?", (p,)).fetchone()[0]
-        last = db.execute("SELECT id, taken_at, last_seen_at FROM snapshots WHERE profile=? ORDER BY taken_at DESC, id DESC LIMIT 1",
-                          (p,)).fetchone()
+        last = db.execute(
+            "SELECT id, taken_at, last_seen_at FROM snapshots WHERE profile=? ORDER BY taken_at DESC, id DESC LIMIT 1",
+            (p,),
+        ).fetchone()
         rng = ""
         if lo:
             rng = f"{local_day((lo - WEBKIT_EPOCH_OFFSET_US) / 1e6)} .. {local_day((hi - WEBKIT_EPOCH_OFFSET_US) / 1e6)}"
         line = f"{p} ({names.get(p, p)}): {n} visits {rng}; {ns} snapshots"
         if last:
-            tabs, wins = db.execute("SELECT COUNT(*), COUNT(DISTINCT window_idx) FROM snapshot_tabs WHERE snapshot_id=?",
-                                    (last[0],)).fetchone()
+            tabs, wins = db.execute(
+                "SELECT COUNT(*), COUNT(DISTINCT window_idx) FROM snapshot_tabs WHERE snapshot_id=?",
+                (last[0],),
+            ).fetchone()
             line += f"; latest {tabs} tabs in {wins} windows (taken {time.strftime('%Y-%m-%d %H:%M', time.localtime(last[1]))}, seen {time.strftime('%Y-%m-%d %H:%M', time.localtime(last[2]))})"
         log(line)
 

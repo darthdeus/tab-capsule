@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Generate an invented archive without accessing Chrome or personal history."""
+
 import argparse
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 import tab_capsule as tc
 
@@ -23,13 +24,18 @@ def main():
         try:
             tc.set_profile_name(db, "Default", "Demo")
             for day in range(3):
-                tabs = [{"url": u, "title": t, "pinned": i == 0}
-                        for i, (u, t) in enumerate(pages[:day + 2])]
+                tabs = [
+                    {"url": u, "title": t, "pinned": i == 0}
+                    for i, (u, t) in enumerate(pages[: day + 2])
+                ]
                 tc.store_snapshot(db, "Default", [tabs], now=base + day * 86400)
                 db.executemany(
                     "INSERT INTO visits(profile,visit_time,url,title,transition,visit_duration) VALUES(?,?,?,?,?,?)",
-                    [("Default", tc.unix_to_webkit(base + day * 86400 + i * 300),
-                      u, t, 1, 30) for i, (u, t) in enumerate(pages)])
+                    [
+                        ("Default", tc.unix_to_webkit(base + day * 86400 + i * 300), u, t, 1, 30)
+                        for i, (u, t) in enumerate(pages)
+                    ],
+                )
             db.commit()
             data = tc.build_data(db)
             data["generated"] = base + 3 * 86400
