@@ -9,6 +9,7 @@ import struct
 import tempfile
 import time
 from collections.abc import Iterator
+from contextlib import closing
 from dataclasses import dataclass, field
 
 from .models import Tab, Windows
@@ -266,34 +267,37 @@ def newest_session_file(profile_path: str | os.PathLike[str]) -> str | None:
 def import_history_file(
     db: sqlite3.Connection, profile: str, history_path: str | os.PathLike[str], retries: int = 3
 ) -> int:
-    """Copy History(+journal) to a temp dir, open the copy, INSERT OR IGNORE visits. Returns rows added."""
+    """Import visits from a temporary copy of History and its rollback/WAL journals."""
+    if retries < 1:
+        raise ValueError("retries must be at least 1")
     history_path = os.fspath(history_path)
     last_err: sqlite3.DatabaseError | None = None
     for attempt in range(retries):
         with tempfile.TemporaryDirectory(prefix="tab-capsule-") as tmp:
             dst = os.path.join(tmp, "History")
             shutil.copyfile(history_path, dst)
-            journal = history_path + "-journal"
-            if os.path.exists(journal):
-                shutil.copyfile(journal, dst + "-journal")
+            for suffix in ("-journal", "-wal"):
+                if os.path.exists(history_path + suffix):
+                    shutil.copyfile(history_path + suffix, dst + suffix)
             try:
-                src = sqlite3.connect(dst)  # read-write so a hot journal gets rolled back
-                rows = src.execute(
-                    "SELECT v.visit_time, u.url, u.title, v.transition, v.visit_duration"
-                    " FROM visits v JOIN urls u ON u.id = v.url"
-                ).fetchall()
-                src.close()
+                # Open only the copy for recovery; SQLite rebuilds WAL shared-memory state.
+                with closing(sqlite3.connect(dst)) as source:
+                    rows = source.execute(
+                        "SELECT v.visit_time, u.url, u.title, v.transition, v.visit_duration"
+                        " FROM visits v JOIN urls u ON u.id = v.url"
+                    ).fetchall()
             except sqlite3.DatabaseError as e:  # caught Chrome mid-write: retry
                 last_err = e
-                time.sleep(1 + attempt)
+                if attempt + 1 < retries:
+                    time.sleep(1 + attempt)
                 continue
         before = db.total_changes
-        db.executemany(
-            "INSERT OR IGNORE INTO visits(profile, visit_time, url, title, transition, visit_duration)"
-            " VALUES(?,?,?,?,?,?)",
-            [(profile,) + tuple(r) for r in rows],
-        )
-        db.commit()
+        with db:
+            db.executemany(
+                "INSERT OR IGNORE INTO visits(profile, visit_time, url, title, transition, visit_duration)"
+                " VALUES(?,?,?,?,?,?)",
+                ((profile,) + tuple(row) for row in rows),
+            )
         return db.total_changes - before
     assert last_err is not None, "at least one history-import attempt is required"
     raise last_err

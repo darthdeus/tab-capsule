@@ -177,3 +177,39 @@ class HistoryTest(unittest.TestCase):
         # A History-journal next to History is copied along; an empty one must not break the import.
         open(self.hist + "-journal", "wb").close()
         self.assertEqual(chrome.import_history_file(self.db, "Default", self.hist), 3)
+
+    def test_import_includes_committed_visits_still_in_wal(self):
+        writer = sqlite3.connect(self.hist)
+        try:
+            writer.execute("PRAGMA journal_mode=WAL")
+            writer.execute("PRAGMA wal_autocheckpoint=0")
+            writer.execute(
+                "INSERT INTO visits(id,url,visit_time) VALUES(4,1,?)",
+                (chrome.unix_to_webkit(time.time()),),
+            )
+            writer.commit()
+            self.assertTrue(os.path.isfile(self.hist + "-wal"))
+            self.assertEqual(chrome.import_history_file(self.db, "Default", self.hist), 4)
+            self.assertEqual(chrome.import_history_file(self.db, "Default", self.hist), 0)
+            self.assertEqual(self.count(), 4)
+        finally:
+            writer.close()
+
+    def test_failed_import_rolls_back_all_visits(self):
+        self.db.executescript("""
+            CREATE TRIGGER fail_visit BEFORE INSERT ON visits
+            WHEN NEW.url = 'https://b/'
+            BEGIN SELECT RAISE(ABORT, 'synthetic visit failure'); END;
+        """)
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "synthetic visit failure"):
+            chrome.import_history_file(self.db, "Default", self.hist)
+        storage.set_profile_name(self.db, "Default", "Synthetic")
+        self.assertEqual(self.count(), 0)
+
+        self.db.execute("DROP TRIGGER fail_visit")
+        self.assertEqual(chrome.import_history_file(self.db, "Default", self.hist), 3)
+
+    def test_import_rejects_nonpositive_retry_count(self):
+        for retries in (0, -1):
+            with self.subTest(retries=retries), self.assertRaisesRegex(ValueError, "retries"):
+                chrome.import_history_file(self.db, "Default", self.hist, retries=retries)
