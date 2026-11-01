@@ -87,3 +87,10 @@ checks are in `tests/frontend.test.cjs`.
 
 Databases and generated HTML contain browsing history. Keep them out of git and
 never publish them as demo data. The page loads no external favicons or scripts.
+
+## License
+
+Copyright (c) 2026 Jakub Arnold.
+
+Licensed under either the [MIT License](LICENSE-MIT) or the
+[Apache License, Version 2.0](LICENSE-APACHE), at your option.

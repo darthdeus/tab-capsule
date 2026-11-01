@@ -1,6 +1,7 @@
 {
   "name": "tab-capsule-dev",
   "private": true,
+  "license": "(MIT OR Apache-2.0)",
   "engines": {
     "node": ">=20"
   },

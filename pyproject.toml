@@ -3,6 +3,8 @@ name = "tab-capsule"
 version = "0.1.0"
 description = "A local Chrome tab and browsing-history archive"
 readme = "README.md"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
 requires-python = ">=3.10"
 dependencies = []
 
