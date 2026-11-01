@@ -202,6 +202,19 @@ test("keyboard shortcuts, short queries and hash fallback keep day routing", asy
   );
 });
 
+test("one-character input still allows day navigation", async (t) => {
+  const page = await openArchive(t);
+  await page.locator("#q").fill("x");
+  // Settle the input debounce before clicking, so it cannot mask a missed hashchange.
+  await page.waitForTimeout(250);
+  await page.locator('#days a[href="#2026-09-01"]').click();
+  await page.waitForFunction(
+    () => document.querySelector("#days a.sel")?.hash === "#2026-09-01",
+  );
+  assert.equal(await page.locator("#main h2").innerText(), "Tuesday, 1 September 2026");
+  assert.equal(await page.locator("#q").inputValue(), "x");
+});
+
 test("compressed Unicode/HTML titles stay text and unsafe links stay blocked", async (t) => {
   const title =
     'Příliš 🐴 </script><img src="https://example.org/probe"> & "quoted"';

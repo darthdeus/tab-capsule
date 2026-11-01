@@ -269,7 +269,7 @@ $("#q").addEventListener("input", () => {
   timer = setTimeout(route, 200);
 });
 window.addEventListener("hashchange", () => {
-  if (!$("#q").value.trim()) route();
+  if ($("#q").value.trim().length < 2) route();
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "/" && document.activeElement !== $("#q")) {
