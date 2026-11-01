@@ -5,19 +5,22 @@ import datetime
 import gzip
 import json
 import os
+import sqlite3
 import time
 from pathlib import Path
+from typing import cast
 
 from .chrome import WEBKIT_EPOCH_OFFSET_US
+from .models import Log, PageData, PageSnapshot
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 
-def local_day(t):
+def local_day(t: float) -> str:
     return datetime.datetime.fromtimestamp(t).strftime("%Y-%m-%d")
 
 
-def build_data(db):
+def build_data(db: sqlite3.Connection) -> PageData:
     """Compact JSON-able dict for the HTML page.
 
     S: string table (urls and titles). P: profile display names.
@@ -26,9 +29,10 @@ def build_data(db):
     T: last snapshot per profile per day, each {p, d, t, s, w:[[ [url_i, title_i, pinned, new], ...], ...]}.
        `new` = url not in that profile's previous embedded snapshot.
     """
-    strings, index = [], {}
+    strings: list[str] = []
+    index: dict[str, int] = {}
 
-    def si(s):
+    def si(s: str | None) -> int:
         s = s or ""
         if s not in index:
             index[s] = len(strings)
@@ -44,7 +48,8 @@ def build_data(db):
     pidx = {p: i for i, p in enumerate(profiles)}
     plabels = [names.get(p) or p for p in profiles]
 
-    visits, day_ranges = [], {}
+    visits: list[list[int]] = []
+    day_ranges: dict[str, list[int]] = {}
     for vt, url, title, prof, tr in db.execute(
         "SELECT visit_time, url, title, profile, transition FROM visits ORDER BY visit_time, profile, url"
     ):
@@ -56,19 +61,20 @@ def build_data(db):
         visits.append([t, si(url), si(title), pidx[prof], (tr or 0) & 0xFF])
         rng[1] = len(visits)
 
-    snaps = []
+    snaps: list[PageSnapshot] = []
     for prof in profiles:
         rows = db.execute(
             "SELECT id, taken_at, last_seen_at FROM snapshots WHERE profile=? ORDER BY taken_at, id",
             (prof,),
         ).fetchall()
-        last_of_day = {}
+        last_of_day: dict[str, tuple[int, int, int]] = {}
         for sid, taken, seen in rows:
             last_of_day[local_day(taken)] = (sid, taken, seen)
-        prev_urls = None
+        prev_urls: set[str] | None = None
         for day in sorted(last_of_day):
             sid, taken, seen = last_of_day[day]
-            wins, urls = [], set()
+            wins: list[list[list[int]]] = []
+            urls: set[str] = set()
             for w, url, title, pinned in db.execute(
                 "SELECT window_idx, url, title, pinned FROM snapshot_tabs WHERE snapshot_id=? ORDER BY window_idx, tab_idx",
                 (sid,),
@@ -90,7 +96,7 @@ def build_data(db):
             prev_urls = urls
 
     days = set(day_ranges) | {s["d"] for s in snaps}
-    D = [[d] + day_ranges.get(d, [0, 0]) for d in sorted(days, reverse=True)]
+    D: list[list[str | int]] = [[d, *day_ranges.get(d, [0, 0])] for d in sorted(days, reverse=True)]
     return {
         "S": strings,
         "P": plabels,
@@ -101,7 +107,7 @@ def build_data(db):
     }
 
 
-def render_html(data):
+def render_html(data: PageData) -> str:
     """Embed the data as base64(gzip(JSON)); the page inflates it with DecompressionStream.
     URLs compress ~4x, which matters once years of visits accumulate.
     Frontend sources are resolved relative to the source root, independently of the cwd."""
@@ -116,16 +122,16 @@ def render_html(data):
     )
 
 
-def extract_data(html):
+def extract_data(html: str) -> PageData:
     """Inverse of render_html (used by tests and for debugging)."""
     start = html.index('<script type="application/octet-stream" id="data">') + len(
         '<script type="application/octet-stream" id="data">'
     )
     blob = html[start : html.index("</script>", start)]
-    return json.loads(gzip.decompress(base64.b64decode(blob)))
+    return cast(PageData, json.loads(gzip.decompress(base64.b64decode(blob))))
 
 
-def cmd_render(db, data_dir, log=print):
+def cmd_render(db: sqlite3.Connection, data_dir: str | os.PathLike[str], log: Log = print) -> None:
     html = render_html(build_data(db))
     out = os.path.join(data_dir, "index.html")
     tmp = out + ".tmp"

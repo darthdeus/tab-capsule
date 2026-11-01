@@ -8,6 +8,10 @@ import sqlite3
 import struct
 import tempfile
 import time
+from collections.abc import Iterator
+from dataclasses import dataclass, field
+
+from .models import Tab, Windows
 
 # Chrome stores times as microseconds since 1601-01-01 UTC.
 WEBKIT_EPOCH_OFFSET_US = 11644473600 * 1_000_000
@@ -29,7 +33,7 @@ CMD_NAV_PRUNED = 24
 SKIP_URLS = {"", "about:blank", "chrome://newtab/", "chrome://new-tab-page/"}
 
 
-def webkit_to_unix(us):
+def webkit_to_unix(us: object) -> float | None:
     """Chrome µs-since-1601 → unix seconds (float), or None if implausible (before 2000 or >1 day ahead)."""
     if not isinstance(us, int) or us <= 0:
         return None
@@ -39,11 +43,11 @@ def webkit_to_unix(us):
     return t
 
 
-def unix_to_webkit(t):
+def unix_to_webkit(t: float) -> int:
     return int(round(t * 1_000_000)) + WEBKIT_EPOCH_OFFSET_US
 
 
-def iter_snss_commands(data):
+def iter_snss_commands(data: bytes) -> Iterator[tuple[int, bytes]]:
     """Yield (command_id, payload) from an SNSS file's bytes. Tolerates a truncated tail."""
     if len(data) < 8 or data[:4] != b"SNSS":
         raise ValueError("not an SNSS file")
@@ -60,47 +64,47 @@ def iter_snss_commands(data):
 class PickleReader:
     """Reads a base::Pickle: uint32 payload size header, then 4-byte aligned fields."""
 
-    def __init__(self, buf):
+    def __init__(self, buf: bytes) -> None:
         if len(buf) < 4:
             raise ValueError("pickle too short")
         size = struct.unpack_from("<I", buf, 0)[0]
         self.buf = buf[4 : 4 + size]
         self.p = 0
 
-    def _take(self, n):
+    def _take(self, n: int) -> bytes:
         if self.p + n > len(self.buf):
             raise ValueError("pickle underflow")
         b = self.buf[self.p : self.p + n]
         self.p += (n + 3) & ~3
         return b
 
-    def int32(self):
-        return struct.unpack("<i", self._take(4))[0]
+    def int32(self) -> int:
+        return int(struct.unpack("<i", self._take(4))[0])
 
-    def int64(self):
-        return struct.unpack("<q", self._take(8))[0]
+    def int64(self) -> int:
+        return int(struct.unpack("<q", self._take(8))[0])
 
-    def string(self):
+    def string(self) -> str:
         n = self.int32()
         if n < 0:
             raise ValueError("bad string length")
         return self._take(n).decode("utf-8", "replace")
 
-    def string16(self):
+    def string16(self) -> str:
         n = self.int32()
         if n < 0:
             raise ValueError("bad string16 length")
         return self._take(2 * n).decode("utf-16-le", "replace")
 
 
-def parse_navigation(payload):
+def parse_navigation(payload: bytes) -> tuple[int, int, str, str, float | None]:
     """UpdateTabNavigation payload → (tab_id, nav_index, url, title, timestamp_unix_or_None)."""
     r = PickleReader(payload)
     tab_id = r.int32()
     index = r.int32()
     url = r.string()
     title = r.string16()
-    ts = None
+    ts: float | None = None
     try:  # best-effort tail; the url/title above are the strict part
         r.string()  # encoded page state
         r.int32()  # transition
@@ -115,33 +119,40 @@ def parse_navigation(payload):
     return tab_id, index, url, title, ts
 
 
-def replay_session(data):
+@dataclass(slots=True)
+class _TabState:
+    window: int | None = None
+    index: int = 0
+    navs: dict[int, tuple[str, str, float | None]] = field(default_factory=dict)
+    selected: int | None = None
+    pinned: bool = False
+    last_active: float | None = None
+
+
+@dataclass(slots=True)
+class _WindowState:
+    order: int
+    type: int = 0
+    selected: int = 0
+
+
+def replay_session(data: bytes) -> Windows:
     """Replay SNSS commands → list of windows; each window = list of tab dicts in tab order.
 
     Tab dict: url, title, pinned, last_active (unix s or None), nav_time (unix s or None).
     Windows keep the order in which Chrome first mentioned them; closed windows/tabs and
     tabs without navigations are dropped.
     """
-    tabs = {}  # tab_id -> state
-    windows = {}  # window_id -> {"order": n, "type": t, "selected": i}
-    closed_windows = set()
+    tabs: dict[int, _TabState] = {}
+    windows: dict[int, _WindowState] = {}
+    closed_windows: set[int] = set()
 
-    def tab(tid):
-        return tabs.setdefault(
-            tid,
-            {
-                "window": None,
-                "index": 0,
-                "navs": {},
-                "selected": None,
-                "pinned": False,
-                "last_active": None,
-            },
-        )
+    def tab(tid: int) -> _TabState:
+        return tabs.setdefault(tid, _TabState())
 
-    def window(wid):
+    def window(wid: int) -> _WindowState:
         if wid not in windows:
-            windows[wid] = {"order": len(windows), "type": 0, "selected": 0}
+            windows[wid] = _WindowState(order=len(windows))
         return windows[wid]
 
     for cid, pl in iter_snss_commands(data):
@@ -149,74 +160,74 @@ def replay_session(data):
             if cid == CMD_SET_TAB_WINDOW and len(pl) >= 8:
                 wid, tid = struct.unpack_from("<ii", pl)
                 window(wid)
-                tab(tid)["window"] = wid
+                tab(tid).window = wid
             elif cid == CMD_SET_TAB_INDEX_IN_WINDOW and len(pl) >= 8:
                 tid, idx = struct.unpack_from("<ii", pl)
-                tab(tid)["index"] = idx
+                tab(tid).index = idx
             elif cid == CMD_NAV_PRUNED_FROM_BACK and len(pl) >= 8:
                 tid, idx = struct.unpack_from("<ii", pl)
                 t = tab(tid)
-                t["navs"] = {k: v for k, v in t["navs"].items() if k < idx}
+                t.navs = {k: v for k, v in t.navs.items() if k < idx}
             elif cid == CMD_NAV_PRUNED and len(pl) >= 12:
                 tid, idx, count = struct.unpack_from("<iii", pl)
                 t = tab(tid)
                 navs = {}
-                for k, v in t["navs"].items():
+                for k, v in t.navs.items():
                     if k < idx:
                         navs[k] = v
                     elif k >= idx + count:
                         navs[k - count] = v
-                t["navs"] = navs
+                t.navs = navs
             elif cid == CMD_UPDATE_TAB_NAVIGATION:
                 tid, idx, url, title, ts = parse_navigation(pl)
-                tab(tid)["navs"][idx] = (url, title, ts)
+                tab(tid).navs[idx] = (url, title, ts)
             elif cid == CMD_SET_SELECTED_NAV_INDEX and len(pl) >= 8:
                 tid, idx = struct.unpack_from("<ii", pl)
-                tab(tid)["selected"] = idx
+                tab(tid).selected = idx
             elif cid == CMD_SET_SELECTED_TAB_IN_INDEX and len(pl) >= 8:
                 wid, idx = struct.unpack_from("<ii", pl)
-                window(wid)["selected"] = idx
+                window(wid).selected = idx
             elif cid == CMD_SET_WINDOW_TYPE and len(pl) >= 8:
                 wid, wtype = struct.unpack_from("<ii", pl)
-                window(wid)["type"] = wtype
+                window(wid).type = wtype
             elif cid == CMD_SET_PINNED_STATE and len(pl) >= 5:
                 tid = struct.unpack_from("<i", pl)[0]
-                tab(tid)["pinned"] = pl[4] != 0
+                tab(tid).pinned = pl[4] != 0
             elif cid == CMD_TAB_CLOSED and len(pl) >= 4:
                 tabs.pop(struct.unpack_from("<i", pl)[0], None)
             elif cid == CMD_WINDOW_CLOSED and len(pl) >= 4:
                 wid = struct.unpack_from("<i", pl)[0]
                 windows.pop(wid, None)
                 closed_windows.add(wid)
-                for tid in [k for k, v in tabs.items() if v["window"] == wid]:
+                for tid in [k for k, v in tabs.items() if v.window == wid]:
                     del tabs[tid]
             elif cid == CMD_LAST_ACTIVE_TIME and len(pl) >= 16:
                 tid = struct.unpack_from("<i", pl)[0]
-                tab(tid)["last_active"] = webkit_to_unix(struct.unpack_from("<q", pl, 8)[0])
+                tab(tid).last_active = webkit_to_unix(struct.unpack_from("<q", pl, 8)[0])
         except (ValueError, struct.error):
             continue  # one malformed record shouldn't sink the snapshot
 
-    out = []
-    for wid, w in sorted(windows.items(), key=lambda kv: kv[1]["order"]):
-        wtabs = []
+    out: Windows = []
+    for wid, w in sorted(windows.items(), key=lambda kv: kv[1].order):
+        wtabs: list[tuple[int, int, Tab]] = []
         for tid, t in tabs.items():
-            if t["window"] != wid or not t["navs"]:
+            if t.window != wid or not t.navs:
                 continue
-            sel = t["selected"]
-            if sel not in t["navs"]:
-                sel = max(t["navs"])
-            url, title, ts = t["navs"][sel]
+            sel = t.selected
+            if sel is None or sel not in t.navs:
+                sel = max(t.navs)
+            url, title, ts = t.navs[sel]
             if url in SKIP_URLS and not title:
                 continue
             wtabs.append(
                 (
-                    t["index"],
+                    t.index,
                     tid,
                     {
                         "url": url,
                         "title": title,
-                        "pinned": t["pinned"],
-                        "last_active": t["last_active"],
+                        "pinned": t.pinned,
+                        "last_active": t.last_active,
                         "nav_time": ts,
                     },
                 )
@@ -227,7 +238,7 @@ def replay_session(data):
     return out
 
 
-def list_profiles(chrome_dir):
+def list_profiles(chrome_dir: str | os.PathLike[str]) -> list[tuple[str, str, str]]:
     """[(dir_name, display_name, path)] for profiles that have Sessions/ or History."""
     names = {}
     try:
@@ -236,7 +247,7 @@ def list_profiles(chrome_dir):
         names = {k: v.get("name") or k for k, v in cache.items()}
     except (OSError, ValueError):
         pass
-    out = []
+    out: list[tuple[str, str, str]] = []
     if not os.path.isdir(chrome_dir):
         return out
     for d in sorted(os.listdir(chrome_dir)):
@@ -248,14 +259,17 @@ def list_profiles(chrome_dir):
     return out
 
 
-def newest_session_file(profile_path):
+def newest_session_file(profile_path: str | os.PathLike[str]) -> str | None:
     files = glob.glob(os.path.join(profile_path, "Sessions", "Session_*"))
     return max(files, key=os.path.getmtime) if files else None
 
 
-def import_history_file(db, profile, history_path, retries=3):
+def import_history_file(
+    db: sqlite3.Connection, profile: str, history_path: str | os.PathLike[str], retries: int = 3
+) -> int:
     """Copy History(+journal) to a temp dir, open the copy, INSERT OR IGNORE visits. Returns rows added."""
-    last_err = None
+    history_path = os.fspath(history_path)
+    last_err: sqlite3.DatabaseError | None = None
     for attempt in range(retries):
         with tempfile.TemporaryDirectory(prefix="tab-capsule-") as tmp:
             dst = os.path.join(tmp, "History")
@@ -282,4 +296,5 @@ def import_history_file(db, profile, history_path, retries=3):
         )
         db.commit()
         return db.total_changes - before
+    assert last_err is not None, "at least one history-import attempt is required"
     raise last_err

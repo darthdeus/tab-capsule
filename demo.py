@@ -6,9 +6,10 @@ import tempfile
 from pathlib import Path
 
 from tab_capsule import chrome, render, storage
+from tab_capsule.models import Tab
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
@@ -24,7 +25,7 @@ def main():
         try:
             storage.set_profile_name(db, "Default", "Demo")
             for day in range(3):
-                tabs = [
+                tabs: list[Tab] = [
                     {"url": u, "title": t, "pinned": i == 0}
                     for i, (u, t) in enumerate(pages[: day + 2])
                 ]

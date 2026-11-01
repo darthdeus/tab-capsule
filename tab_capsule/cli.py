@@ -16,6 +16,7 @@ import argparse
 import os
 import sqlite3
 import time
+from collections.abc import Sequence
 
 from .chrome import (
     WEBKIT_EPOCH_OFFSET_US,
@@ -24,6 +25,7 @@ from .chrome import (
     newest_session_file,
     replay_session,
 )
+from .models import Log
 from .render import cmd_render, local_day
 from .storage import open_db, set_profile_name, store_snapshot
 
@@ -31,7 +33,9 @@ DEFAULT_CHROME_DIR = os.path.expanduser("~/.config/google-chrome")
 DEFAULT_DATA_DIR = os.path.expanduser("~/.local/share/tab-capsule")
 
 
-def cmd_snapshot(db, chrome_dir, log=print):
+def cmd_snapshot(
+    db: sqlite3.Connection, chrome_dir: str | os.PathLike[str], log: Log = print
+) -> None:
     for d, name, path in list_profiles(chrome_dir):
         set_profile_name(db, d, name)
         sf = newest_session_file(path)
@@ -54,7 +58,9 @@ def cmd_snapshot(db, chrome_dir, log=print):
         )
 
 
-def cmd_import_history(db, chrome_dir, log=print):
+def cmd_import_history(
+    db: sqlite3.Connection, chrome_dir: str | os.PathLike[str], log: Log = print
+) -> None:
     for d, name, path in list_profiles(chrome_dir):
         set_profile_name(db, d, name)
         hp = os.path.join(path, "History")
@@ -68,7 +74,7 @@ def cmd_import_history(db, chrome_dir, log=print):
         log(f"{d}: +{added} visits")
 
 
-def cmd_stats(db, log=print):
+def cmd_stats(db: sqlite3.Connection, log: Log = print) -> None:
     names = dict(db.execute("SELECT dir, name FROM profiles"))
     profs = sorted(
         set(names)
@@ -97,8 +103,8 @@ def cmd_stats(db, log=print):
         log(line)
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+def main(argv: Sequence[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("command", choices=["run", "snapshot", "import-history", "render", "stats"])
     ap.add_argument("--chrome-dir", default=DEFAULT_CHROME_DIR)
     ap.add_argument("--data-dir", default=os.environ.get("TAB_CAPSULE_DIR") or DEFAULT_DATA_DIR)

@@ -42,6 +42,7 @@ just setup           # uv sync --locked and npm ci
 just check           # lint, formatting, Python tests, compilation and browser tests
 just check-python    # Python checks only; uv run syncs the Python environment
 just format          # format Python sources
+just typecheck       # strict mypy checks for the application and demo
 just demo            # synthetic page at demo-output/index.html
 just cli --help      # CLI help; e.g. just cli render --data-dir /path/to/archive
 just                 # list all recipes, including individual checks
@@ -52,8 +53,9 @@ interpreter, `PYTHON` to override the Python command, or `CHROME_BIN` to select 
 browser executable. `just demo` accepts an optional output directory; `just cli`
 forwards all arguments to `tab_capsule.py`, including `--data-dir` and `--chrome-dir`.
 
-Ruff configuration lives in `pyproject.toml`; `uv.lock` and `package-lock.json` pin
-development tools. To update Ruff, run `uv lock --upgrade-package ruff` and rerun
+Ruff and mypy configuration live in `pyproject.toml`; `uv.lock` and `package-lock.json`
+pin development tools. Shared tab and page contracts live in `tab_capsule/models.py`;
+parser state uses private dataclasses. To update Ruff, run `uv lock --upgrade-package ruff` and rerun
 the checks. Tests use synthetic data and temporary browser profiles. Browser checks
 open the HTML directly and fail on external requests or JavaScript errors.
 

@@ -6,6 +6,8 @@ import os
 import sqlite3
 import time
 
+from .models import Windows
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS profiles(dir TEXT PRIMARY KEY, name TEXT);
 CREATE TABLE IF NOT EXISTS snapshots(
@@ -22,14 +24,14 @@ CREATE TABLE IF NOT EXISTS visits(
 """
 
 
-def open_db(data_dir):
+def open_db(data_dir: str | os.PathLike[str]) -> sqlite3.Connection:
     os.makedirs(data_dir, mode=0o700, exist_ok=True)
     db = sqlite3.connect(os.path.join(data_dir, "capsule.db"))
     db.executescript(SCHEMA)
     return db
 
 
-def fingerprint(windows):
+def fingerprint(windows: Windows) -> str:
     """Tab-set identity: window/tab position, url, pinned. Titles are excluded on purpose
     (unread counts like "(3) Inbox" would otherwise make a new snapshot every hour)."""
     key = [
@@ -40,7 +42,13 @@ def fingerprint(windows):
     return hashlib.sha1(json.dumps(key, ensure_ascii=False).encode()).hexdigest()
 
 
-def store_snapshot(db, profile, windows, now=None, source=None):
+def store_snapshot(
+    db: sqlite3.Connection,
+    profile: str,
+    windows: Windows,
+    now: float | None = None,
+    source: str | None = None,
+) -> tuple[int, bool]:
     """Insert a snapshot if the tab set changed; else bump last_seen_at. Returns (snapshot_id, created)."""
     now = int(now if now is not None else time.time())
     fp = fingerprint(windows)
@@ -57,29 +65,34 @@ def store_snapshot(db, profile, windows, now=None, source=None):
         (profile, now, now, fp, source),
     )
     sid = cur.lastrowid
+    assert sid is not None
+    rows = []
+    for window_index, tabs in enumerate(windows):
+        for tab_index, tab in enumerate(tabs):
+            last_active = tab.get("last_active")
+            nav_time = tab.get("nav_time")
+            rows.append(
+                (
+                    sid,
+                    window_index,
+                    tab_index,
+                    tab["url"],
+                    tab["title"],
+                    int(bool(tab["pinned"])),
+                    int(last_active) if last_active else None,
+                    int(nav_time) if nav_time else None,
+                )
+            )
     db.executemany(
         "INSERT INTO snapshot_tabs(snapshot_id, window_idx, tab_idx, url, title, pinned, last_active, nav_time)"
         " VALUES(?,?,?,?,?,?,?,?)",
-        [
-            (
-                sid,
-                w,
-                i,
-                t["url"],
-                t["title"],
-                int(bool(t["pinned"])),
-                int(t["last_active"]) if t.get("last_active") else None,
-                int(t["nav_time"]) if t.get("nav_time") else None,
-            )
-            for w, tabs in enumerate(windows)
-            for i, t in enumerate(tabs)
-        ],
+        rows,
     )
     db.commit()
     return sid, True
 
 
-def set_profile_name(db, d, name):
+def set_profile_name(db: sqlite3.Connection, d: str, name: str) -> None:
     db.execute(
         "INSERT INTO profiles(dir, name) VALUES(?,?) ON CONFLICT(dir) DO UPDATE SET name=excluded.name",
         (d, name),

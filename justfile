@@ -19,13 +19,17 @@ setup:
 check: check-python test-browser
 
 # Run Python checks without Node or a browser.
-check-python: lint test
+check-python: lint typecheck test
     uv run --locked {{ quote(python) }} -m compileall -q tab_capsule tests tab_capsule.py demo.py
 
 # Check Python lint, import order and formatting.
 lint:
     uv run --locked ruff check .
     uv run --locked ruff format --check .
+
+# Check Python data contracts and function signatures.
+typecheck:
+    uv run --locked mypy
 
 # Format Python sources.
 format:

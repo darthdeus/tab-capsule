@@ -13,16 +13,18 @@ HTML output unless the user chooses otherwise.
 - `tests/frontend.test.cjs`: synthetic standalone-page browser checks.
 - `demo.py`: deterministic synthetic demonstration; never reads actual browser data.
 - `justfile`: development checks, synthetic demo and CLI shortcuts.
-- `pyproject.toml`, `uv.lock`: Python metadata, Ruff settings and locked dev tools.
+- `tab_capsule/models.py`: shared tab and generated-page type contracts.
+- `pyproject.toml`, `uv.lock`: Python metadata, Ruff/mypy settings and locked dev tools.
 
 ## Required checks before committing
 
 `python3 -m unittest discover -v` and
 `python3 -m py_compile tab_capsule.py demo.py` must pass.
 Use `uv sync --locked` to set up the Python development environment. Run
-`just check-python` for Ruff lint/format checks, unittest and compilation, or use
-`uv run --locked` for the individual commands. Keep Ruff as a development-only
-dependency and retain direct stdlib-only Python execution.
+`just check-python` for Ruff lint/format checks, strict mypy, unittest and compilation,
+or use `uv run --locked` for the individual commands. Keep development tools out of
+runtime dependencies and retain direct stdlib-only Python execution. Type checking
+covers `tab_capsule/` and `demo.py`; use Python 3.10-compatible annotations.
 For frontend behavior changes, add and run appropriate JavaScript/browser checks:
 `npm ci` then `npm test` (Node.js 20+ and Chrome/Chromium; `CHROME_BIN` can override
 the executable path). The Python suite does not execute browser interactions.
