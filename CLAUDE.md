@@ -11,7 +11,8 @@ HTML output unless the user chooses otherwise.
 - `frontend/capsule.{html,css,js}`: readable page sources, inlined when rendering.
 - `tests/test_*.py`, `tests/fixtures.py`: grouped Python tests and synthetic fixtures.
 - `tests/frontend.test.cjs`: synthetic standalone-page browser checks.
-- `demo.py`: deterministic synthetic demonstration; never reads actual browser data.
+- `demo.py`: repeatable synthetic HTML or persistent seeded archive/fake Chrome profiles.
+- `just seed` / `just sandbox`: isolated developer data and CLI commands; never use real profiles.
 - `justfile`: development checks, synthetic demo and CLI shortcuts.
 - `tab_capsule/models.py`: shared tab and generated-page type contracts.
 - `pyproject.toml`, `uv.lock`: Python metadata, Ruff/mypy settings and locked dev tools.

@@ -10,6 +10,15 @@ default:
 demo output_dir="demo-output":
     uv run --locked {{ quote(python) }} demo.py --output-dir "$1"
 
+# Seed an isolated archive and fake Chrome profiles (30 days, 6,000 visits by default).
+seed *args:
+    uv run --locked {{ quote(python) }} demo.py --keep-db --output-dir demo-output/sandbox --days 30 --visits-per-day 100 --profiles 2 "$@"
+
+# Run the CLI against seeded data; both paths are pinned to the synthetic workspace.
+sandbox *args:
+    test -f demo-output/sandbox/capsule.db
+    uv run --locked {{ quote(python) }} tab_capsule.py "$@" --data-dir demo-output/sandbox --chrome-dir demo-output/sandbox/chrome
+
 # Install Python and browser-test development dependencies.
 setup:
     uv sync --locked

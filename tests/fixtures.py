@@ -1,49 +1,54 @@
 """Synthetic SNSS records, History databases and tab fixtures."""
 
+from __future__ import annotations
+
+import os
 import sqlite3
 import struct
 import time
+from collections.abc import Iterable
 
 from tab_capsule import chrome
+from tab_capsule.models import Tab, Windows
 
 
-def _pad4(b):
+def _pad4(b: bytes) -> bytes:
     return b + b"\0" * (-len(b) % 4)
 
 
-def p_int(v):
+def p_int(v: int) -> bytes:
     return struct.pack("<i", v)
 
 
-def p_str(s):
+def p_str(s: str) -> bytes:
     b = s.encode("utf-8")
     return p_int(len(b)) + _pad4(b)
 
 
-def p_str16(s):
+def p_str16(s: str) -> bytes:
     b = s.encode("utf-16-le")
     return p_int(len(b) // 2) + _pad4(b)
 
 
-def pickle(body):
+def pickle(body: bytes) -> bytes:
     return struct.pack("<I", len(body)) + body
 
 
 class Snss:
-    def __init__(self):
-        self.records = []
+    def __init__(self) -> None:
+        self.records: list[bytes] = []
 
-    def cmd(self, cid, payload):
+    def cmd(self, cid: int, payload: bytes) -> Snss:
         self.records.append(struct.pack("<HB", len(payload) + 1, cid) + payload)
         return self
 
-    def tab_window(self, wid, tid):
+    def tab_window(self, wid: int, tid: int) -> Snss:
         return self.cmd(0, struct.pack("<ii", wid, tid))
 
-    def tab_index(self, tid, idx):
+    def tab_index(self, tid: int, idx: int) -> Snss:
         return self.cmd(2, struct.pack("<ii", tid, idx))
 
-    def nav(self, tid, idx, url, title, ts_unix=None):
+    def nav(self, tid: int, idx: int, url: str, title: str, ts_unix: float | None = None) -> Snss:
         ts = chrome.unix_to_webkit(ts_unix) if ts_unix else 0
         body = (
             p_int(tid)
@@ -62,36 +67,36 @@ class Snss:
         )
         return self.cmd(6, pickle(body))
 
-    def selected_nav(self, tid, idx):
+    def selected_nav(self, tid: int, idx: int) -> Snss:
         return self.cmd(7, struct.pack("<ii", tid, idx))
 
-    def window_type(self, wid, t=0):
+    def window_type(self, wid: int, t: int = 0) -> Snss:
         return self.cmd(9, struct.pack("<ii", wid, t))
 
-    def pinned(self, tid, on=True):
+    def pinned(self, tid: int, on: bool = True) -> Snss:
         return self.cmd(12, struct.pack("<i?3x", tid, on))
 
-    def tab_closed(self, tid):
+    def tab_closed(self, tid: int) -> Snss:
         return self.cmd(16, struct.pack("<i4xq", tid, chrome.unix_to_webkit(time.time())))
 
-    def window_closed(self, wid):
+    def window_closed(self, wid: int) -> Snss:
         return self.cmd(17, struct.pack("<i4xq", wid, chrome.unix_to_webkit(time.time())))
 
-    def last_active(self, tid, t):
+    def last_active(self, tid: int, t: float) -> Snss:
         return self.cmd(21, struct.pack("<i4xq", tid, chrome.unix_to_webkit(t)))
 
-    def pruned_from_back(self, tid, idx):
+    def pruned_from_back(self, tid: int, idx: int) -> Snss:
         return self.cmd(5, struct.pack("<ii", tid, idx))
 
-    def bytes(self):
+    def bytes(self) -> bytes:
         return b"SNSS" + struct.pack("<i", 3) + b"".join(self.records)
 
 
-def urls(windows):
+def urls(windows: Windows) -> list[list[str]]:
     return [[t["url"] for t in w] for w in windows]
 
 
-def make_history(path, rows):
+def make_history(path: str | os.PathLike[str], rows: Iterable[tuple[int, str, str, float]]) -> None:
     """rows: [(visit_id, url, title, visit_time_unix)] using Chrome's urls/visits schema."""
     db = sqlite3.connect(path)
     db.executescript("""
@@ -120,7 +125,7 @@ def make_history(path, rows):
     db.close()
 
 
-def win(*pairs):
+def win(*pairs: tuple[str, str]) -> list[Tab]:
     return [
         {"url": u, "title": t, "pinned": False, "last_active": None, "nav_time": None}
         for u, t in pairs

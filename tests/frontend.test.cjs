@@ -312,6 +312,47 @@ test("empty archive loads and can be searched", async (t) => {
   );
 });
 
+test("persistent seeded data renders multiple profiles and can be searched", async (t) => {
+  const output = path.join(temporary, "seeded");
+  execFileSync(
+    python,
+    [
+      "demo.py",
+      "--output-dir",
+      output,
+      "--keep-db",
+      "--days",
+      "2",
+      "--visits-per-day",
+      "7",
+      "--profiles",
+      "2",
+    ],
+    { cwd: root },
+  );
+  const page = await openArchive(t, path.join(output, "index.html"));
+  assert.equal(
+    await page.locator("#main > .sub").innerText(),
+    "14 history visits",
+  );
+  assert.equal(await page.locator("#main > details").count(), 3);
+  await query(page, "postgres");
+  assert.equal(
+    await page.locator("#main > .sub").innerText(),
+    "8 visits · 2 open-tab matches",
+  );
+  assert.deepEqual(
+    (
+      await page
+        .locator("#main > details")
+        .first()
+        .locator(".prof")
+        .allTextContents()
+    ).sort(),
+    ["Demo", "Demo 2"],
+  );
+});
+
 for (const timezoneId of ["UTC", "America/Los_Angeles", "Asia/Tokyo"]) {
   test(`history jumps keep archive days in ${timezoneId}`, async (t) => {
     const beforeMidnight = Date.parse("2026-09-01T23:30:00Z") / 1000;

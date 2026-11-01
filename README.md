@@ -34,6 +34,31 @@ python3 demo.py --output-dir /tmp/tab-capsule-demo
 Open `/tmp/tab-capsule-demo/index.html`. The demo uses invented pages and profiles;
 it never reads Chrome. Repeating the command produces the same demo dataset.
 
+For a persistent development workspace, seed a new directory:
+
+```sh
+just seed                         # 2 profiles × 30 days × 100 visits = 6,000 visits
+just sandbox stats
+just sandbox render
+just sandbox run                  # collect from the generated fake Chrome profiles
+```
+
+Open `demo-output/sandbox/index.html`. The directory also contains `capsule.db` and
+`chrome/` with synthetic History databases and session files. `just sandbox` pins
+both CLI paths to this workspace, regardless of your normal data-directory setting.
+All of these generated files are ignored by Git. Persistent seeding refuses an
+existing output directory; choose a new one to generate a different dataset:
+
+```sh
+just seed --output-dir /tmp/tab-capsule-large --days 90 --visits-per-day 1000 --profiles 3
+just cli stats --data-dir /tmp/tab-capsule-large
+# Without just:
+uv run --locked python demo.py --keep-db --output-dir /tmp/tab-capsule-dev --days 30
+```
+
+Data is repeatable for the same options and local timezone. The seeder reuses the
+synthetic Chrome builders in `tests/fixtures.py`; it needs no installed browser.
+
 ## Development
 
 Use uv and just for development. Full checks also need Node.js 20+ and an installed
