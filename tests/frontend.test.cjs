@@ -43,10 +43,10 @@ after(async () => {
   if (temporary) await fs.rm(temporary, { recursive: true, force: true });
 });
 
-async function openArchive(t, file = demo) {
+async function openArchive(t, file = demo, timezoneId = "Europe/Prague") {
   const context = await browser.newContext({
     locale: "en-GB",
-    timezoneId: "Europe/Prague",
+    timezoneId,
   });
   const errors = [],
     requests = [];
@@ -211,7 +211,10 @@ test("one-character input still allows day navigation", async (t) => {
   await page.waitForFunction(
     () => document.querySelector("#days a.sel")?.hash === "#2026-09-01",
   );
-  assert.equal(await page.locator("#main h2").innerText(), "Tuesday, 1 September 2026");
+  assert.equal(
+    await page.locator("#main h2").innerText(),
+    "Tuesday, 1 September 2026",
+  );
   assert.equal(await page.locator("#q").inputValue(), "x");
 });
 
@@ -308,3 +311,50 @@ test("empty archive loads and can be searched", async (t) => {
     "0 visits · 0 open-tab matches",
   );
 });
+
+for (const timezoneId of ["UTC", "America/Los_Angeles", "Asia/Tokyo"]) {
+  test(`history jumps keep archive days in ${timezoneId}`, async (t) => {
+    const beforeMidnight = Date.parse("2026-09-01T23:30:00Z") / 1000;
+    const afterMidnight = Date.parse("2026-09-02T00:30:00Z") / 1000;
+    const file = await fixture("midnight-" + timezoneId.replaceAll("/", "-"), {
+      S: ["https://example.org/midnight", "Midnight"],
+      P: ["Synthetic"],
+      V: [
+        [beforeMidnight, 0, 1, 0, 1],
+        [afterMidnight, 0, 1, 0, 1],
+      ],
+      D: [
+        ["2026-09-02", 1, 2],
+        ["2026-09-01", 0, 1],
+      ],
+      T: [],
+      generated: afterMidnight,
+    });
+    const page = await openArchive(t, file, timezoneId);
+    await query(page, "midnight");
+    assert.deepEqual(await page.locator(".jump").allTextContents(), [
+      "2026-09-02",
+      "2026-09-01",
+    ]);
+    await page.locator(".jump").last().click();
+    assert.equal(
+      await page.locator("#days a.sel").getAttribute("href"),
+      "#2026-09-01",
+    );
+    assert.equal(
+      await page.locator("#main > .sub").innerText(),
+      "1 history visits",
+    );
+
+    await query(page, "midnight");
+    await page.locator(".jump").first().click();
+    assert.equal(
+      await page.locator("#days a.sel").getAttribute("href"),
+      "#2026-09-02",
+    );
+    assert.equal(
+      await page.locator("#main > .sub").innerText(),
+      "1 history visits",
+    );
+  });
+}

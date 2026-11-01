@@ -230,9 +230,7 @@ function search(q) {
       "<details open><summary>Visits<span class=sub>newest first</span></summary><ul>";
     for (const i of vh) {
       const [t, u, ti, p] = V[i];
-      const d = new Date(t * 1000);
-      const day =
-        d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+      const [day] = D.find(([, start, end]) => start <= i && i < end);
       h += `<li><button class="jump" data-d="${day}">${day}</button><span class="t">${hm(t)}</span>${chip(S[u])}${link(S[u], S[ti])}${P.length > 1 ? `<span class="prof">${esc(P[p])}</span>` : ""}</li>`;
     }
     h += "</ul></details>";

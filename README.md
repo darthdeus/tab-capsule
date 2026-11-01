@@ -80,6 +80,8 @@ checks are in `tests/frontend.test.cjs`.
 
 - Snapshot identity includes tab order, URL and pinned state, but excludes titles.
 - Empty profiles are skipped. The page retains the last snapshot per profile/day.
+- Days use the generating machine's local timezone. Search links retain those
+  recorded day groups in other browser timezones; clock times use the browser's timezone.
 - Search starts at two trimmed characters after a 200 ms debounce. Every
   whitespace-separated term must occur as a case-insensitive literal substring
   across URL/title. Visits are newest first (up to 300 displayed); tab matches
