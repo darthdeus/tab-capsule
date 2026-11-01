@@ -10,12 +10,65 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from tab_capsule import cli, render
+from tab_capsule import cli, render, storage
 from tests.fixtures import Snss, make_history
 
 
 class CliTest(unittest.TestCase):
+    def test_failed_profile_reports_failure_and_still_imports_other_profiles(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            chrome_dir = Path(tmp) / "chrome"
+            bad = chrome_dir / "Default"
+            good = chrome_dir / "Profile 1"
+            bad.mkdir(parents=True)
+            good.mkdir()
+            (bad / "History").write_bytes(b"not sqlite")
+            make_history(good / "History", [(1, "https://example.org/", "Synthetic", time.time())])
+            data_dir = Path(tmp) / "archive"
+            with patch("tab_capsule.chrome.time.sleep"), contextlib.redirect_stdout(io.StringIO()):
+                status = cli.main(
+                    ["run", "--chrome-dir", str(chrome_dir), "--data-dir", str(data_dir)]
+                )
+            self.assertEqual(status, 1)
+            with contextlib.closing(storage.open_db(data_dir)) as db:
+                self.assertEqual(
+                    db.execute("SELECT profile FROM visits").fetchall(), [("Profile 1",)]
+                )
+            self.assertTrue((data_dir / "index.html").is_file())
+
+    def test_invalid_session_reports_failure_and_continues_other_profiles(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            chrome_dir = Path(tmp) / "chrome"
+            for profile in ("Default", "Profile 1"):
+                (chrome_dir / profile / "Sessions").mkdir(parents=True)
+            (chrome_dir / "Default" / "Sessions" / "Session_1").write_bytes(b"invalid session")
+            session = Snss().tab_window(1, 10).nav(10, 0, "https://example.org/", "Synthetic")
+            (chrome_dir / "Profile 1" / "Sessions" / "Session_1").write_bytes(session.bytes())
+            data_dir = Path(tmp) / "archive"
+            with contextlib.redirect_stdout(io.StringIO()):
+                status = cli.main(
+                    ["snapshot", "--chrome-dir", str(chrome_dir), "--data-dir", str(data_dir)]
+                )
+            self.assertEqual(status, 1)
+            with contextlib.closing(storage.open_db(data_dir)) as db:
+                self.assertEqual(
+                    db.execute("SELECT profile FROM snapshots").fetchall(), [("Profile 1",)]
+                )
+
+    def test_archive_connection_closes_when_render_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = storage.open_db(tmp)
+            with (
+                patch("tab_capsule.cli.open_db", return_value=db),
+                patch("tab_capsule.cli.cmd_render", side_effect=OSError("synthetic disk failure")),
+                self.assertRaisesRegex(OSError, "synthetic disk failure"),
+            ):
+                cli.main(["render", "--data-dir", tmp])
+            with self.assertRaises(sqlite3.ProgrammingError):
+                db.execute("SELECT 1")
+
     def test_module_entry_point_respects_data_dir_override(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "explicit archive"

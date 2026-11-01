@@ -22,6 +22,8 @@ Open `~/.local/share/tab-capsule/index.html` in your browser. `snapshot`,
 `import-history`, and `render` can also be run separately. `TAB_CAPSULE_DIR` overrides
 the default data directory. Scheduling is optional; run the command manually or
 from your own scheduler.
+Collection continues across profiles and returns a nonzero exit status if any
+profile fails; `run` still renders the successfully collected data.
 
 ## Synthetic demo
 

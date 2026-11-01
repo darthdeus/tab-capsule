@@ -17,6 +17,7 @@ import os
 import sqlite3
 import time
 from collections.abc import Sequence
+from contextlib import closing
 
 from .chrome import (
     WEBKIT_EPOCH_OFFSET_US,
@@ -35,18 +36,25 @@ DEFAULT_DATA_DIR = os.path.expanduser("~/.local/share/tab-capsule")
 
 def cmd_snapshot(
     db: sqlite3.Connection, chrome_dir: str | os.PathLike[str], log: Log = print
-) -> None:
+) -> bool:
+    success = True
     for d, name, path in list_profiles(chrome_dir):
         set_profile_name(db, d, name)
-        sf = newest_session_file(path)
-        if not sf:
+        try:
+            sf = newest_session_file(path)
+            if not sf:
+                continue
+            with open(sf, "rb") as f:
+                data = f.read()
+        except OSError as error:
+            log(f"{d}: snapshot failed: {error}")
+            success = False
             continue
-        with open(sf, "rb") as f:
-            data = f.read()
         try:
             windows = replay_session(data)
         except ValueError as e:
             log(f"{d}: cannot parse {os.path.basename(sf)}: {e}")
+            success = False
             continue
         n = sum(len(w) for w in windows)
         if n == 0:
@@ -56,11 +64,13 @@ def cmd_snapshot(
         log(
             f"{d}: {n} tabs in {len(windows)} windows ({'new snapshot' if created else 'unchanged'})"
         )
+    return success
 
 
 def cmd_import_history(
     db: sqlite3.Connection, chrome_dir: str | os.PathLike[str], log: Log = print
-) -> None:
+) -> bool:
+    success = True
     for d, name, path in list_profiles(chrome_dir):
         set_profile_name(db, d, name)
         hp = os.path.join(path, "History")
@@ -70,8 +80,10 @@ def cmd_import_history(
             added = import_history_file(db, d, hp)
         except (OSError, sqlite3.DatabaseError) as e:
             log(f"{d}: history import failed: {e}")
+            success = False
             continue
         log(f"{d}: +{added} visits")
+    return success
 
 
 def cmd_stats(db: sqlite3.Connection, log: Log = print) -> None:
@@ -110,14 +122,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--data-dir", default=os.environ.get("TAB_CAPSULE_DIR") or DEFAULT_DATA_DIR)
     a = ap.parse_args(argv)
     os.umask(0o077)
-    db = open_db(a.data_dir)
-    if a.command in ("run", "snapshot"):
-        cmd_snapshot(db, a.chrome_dir)
-    if a.command in ("run", "import-history"):
-        cmd_import_history(db, a.chrome_dir)
-    if a.command in ("run", "render"):
-        cmd_render(db, a.data_dir)
-    if a.command == "stats":
-        cmd_stats(db)
-    db.close()
-    return 0
+    with closing(open_db(a.data_dir)) as db:
+        success = True
+        if a.command in ("run", "snapshot"):
+            if not cmd_snapshot(db, a.chrome_dir):
+                success = False
+        if a.command in ("run", "import-history"):
+            if not cmd_import_history(db, a.chrome_dir):
+                success = False
+        if a.command in ("run", "render"):
+            cmd_render(db, a.data_dir)
+        if a.command == "stats":
+            cmd_stats(db)
+        return 0 if success else 1
