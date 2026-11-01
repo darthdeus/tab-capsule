@@ -132,8 +132,6 @@ class _TabState:
 @dataclass(slots=True)
 class _WindowState:
     order: int
-    type: int = 0
-    selected: int = 0
 
 
 def replay_session(data: bytes) -> Windows:
@@ -145,14 +143,16 @@ def replay_session(data: bytes) -> Windows:
     """
     tabs: dict[int, _TabState] = {}
     windows: dict[int, _WindowState] = {}
-    closed_windows: set[int] = set()
+    next_window_order = 0
 
     def tab(tid: int) -> _TabState:
         return tabs.setdefault(tid, _TabState())
 
     def window(wid: int) -> _WindowState:
+        nonlocal next_window_order
         if wid not in windows:
-            windows[wid] = _WindowState(order=len(windows))
+            windows[wid] = _WindowState(order=next_window_order)
+            next_window_order += 1
         return windows[wid]
 
     for cid, pl in iter_snss_commands(data):
@@ -185,11 +185,11 @@ def replay_session(data: bytes) -> Windows:
                 tid, idx = struct.unpack_from("<ii", pl)
                 tab(tid).selected = idx
             elif cid == CMD_SET_SELECTED_TAB_IN_INDEX and len(pl) >= 8:
-                wid, idx = struct.unpack_from("<ii", pl)
-                window(wid).selected = idx
+                wid, _ = struct.unpack_from("<ii", pl)
+                window(wid)
             elif cid == CMD_SET_WINDOW_TYPE and len(pl) >= 8:
-                wid, wtype = struct.unpack_from("<ii", pl)
-                window(wid).type = wtype
+                wid, _ = struct.unpack_from("<ii", pl)
+                window(wid)
             elif cid == CMD_SET_PINNED_STATE and len(pl) >= 5:
                 tid = struct.unpack_from("<i", pl)[0]
                 tab(tid).pinned = pl[4] != 0
@@ -198,7 +198,6 @@ def replay_session(data: bytes) -> Windows:
             elif cid == CMD_WINDOW_CLOSED and len(pl) >= 4:
                 wid = struct.unpack_from("<i", pl)[0]
                 windows.pop(wid, None)
-                closed_windows.add(wid)
                 for tid in [k for k, v in tabs.items() if v.window == wid]:
                     del tabs[tid]
             elif cid == CMD_LAST_ACTIVE_TIME and len(pl) >= 16:

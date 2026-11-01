@@ -70,6 +70,19 @@ class SnssTest(unittest.TestCase):
         s.window_closed(1)
         self.assertEqual(urls(chrome.replay_session(s.bytes())), [["https://b/"]])
 
+    def test_new_window_stays_after_surviving_older_window(self):
+        session = Snss()
+        for wid in (1, 2, 3):
+            session.tab_window(wid, wid * 10).nav(
+                wid * 10, 0, f"https://example.org/window-{wid}", str(wid)
+            )
+        session.window_closed(1).window_closed(2)
+        session.tab_window(4, 40).nav(40, 0, "https://example.org/window-4", "4")
+        self.assertEqual(
+            urls(chrome.replay_session(session.bytes())),
+            [["https://example.org/window-3"], ["https://example.org/window-4"]],
+        )
+
     def test_prune_from_back(self):
         s = Snss().tab_window(1, 10)
         for i in range(3):
