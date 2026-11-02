@@ -61,18 +61,35 @@ synthetic Chrome builders in `tests/fixtures.py`; it needs no installed browser.
 
 ## Development
 
-Use uv and just for development. Full checks also need Node.js 20+ and an installed
-Chrome/Chromium; Python-only work needs neither.
+### Checks (no installation needed)
+
+The whole test suite needs only Python 3.10+ and an installed Chrome or Chromium: no
+packages, no Node.js and no network access.
 
 ```sh
-just setup           # uv sync --locked and npm ci
-just check           # lint, formatting, Python tests, compilation and browser tests
-just check-python    # Python checks only; uv run syncs the Python environment
+python3 -m unittest discover -v
+python3 -m compileall -q tab_capsule tests tab_capsule.py demo.py
+```
+
+`tests/test_browser.py` opens generated pages in headless Chrome and drives them with
+trusted keyboard and mouse input. It fails if no browser is found: set `CHROME_BIN` to
+the executable, or `TAB_CAPSULE_SKIP_BROWSER=1` to skip only those tests.
+
+### Optional tools
+
+[uv](https://docs.astral.sh/uv/) and [just](https://just.systems/) add Ruff lint and
+format checks and strict mypy type checks.
+
+```sh
+just setup           # uv sync --locked: install Ruff and mypy into .venv
+just check           # lint, formatting, type checks, all tests and compilation
+just check-offline   # the two commands above, without uv
+just test-python     # tests without a browser
+just test-browser    # only the headless-Chrome checks
 just format          # format Python sources
-just typecheck       # strict mypy checks for the application and demo
 just demo            # synthetic page at demo-output/index.html
 just cli --help      # CLI help; e.g. just cli render --data-dir /path/to/archive
-just                 # list all recipes, including individual checks
+just                 # list all recipes
 ```
 
 Recipes use the locked uv environment in `.venv`. Set `UV_PYTHON` to select its
@@ -80,11 +97,12 @@ interpreter, `PYTHON` to override the Python command, or `CHROME_BIN` to select 
 browser executable. `just demo` accepts an optional output directory; `just cli`
 forwards all arguments to `tab_capsule.py`, including `--data-dir` and `--chrome-dir`.
 
-Ruff and mypy configuration live in `pyproject.toml`; `uv.lock` and `package-lock.json`
-pin development tools. Shared tab and page contracts live in `tab_capsule/models.py`;
+Ruff and mypy configuration live in `pyproject.toml`; `uv.lock` pins them. Shared tab and page contracts live in `tab_capsule/models.py`;
 parser state uses private dataclasses. To update Ruff, run `uv lock --upgrade-package ruff` and rerun
 the checks. Tests use synthetic data and temporary browser profiles. Browser checks
-open the HTML directly and fail on external requests or JavaScript errors.
+open the HTML directly and fail on external requests or JavaScript errors. They talk
+to Chrome over the DevTools protocol on a pipe (`--remote-debugging-pipe`), implemented
+with the standard library in `tests/cdp.py`.
 
 `tab_capsule.py` launches the `tab_capsule/` package; `python3 -m tab_capsule` works
 too. The package has four modules:
@@ -99,7 +117,7 @@ source tool. Edit frontend sources, rerun `just demo` or `just cli render`, and
 reload the page; no build step is needed. The generated HTML can be moved on its
 own. In JavaScript, start at `load()` → `init()` → `route()`. Python tests live in
 `tests/test_*.py`, with shared synthetic builders in `tests/fixtures.py`; browser
-checks are in `tests/frontend.test.cjs`.
+checks are in `tests/test_browser.py`.
 
 ## Behavior and limitations
 

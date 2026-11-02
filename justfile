@@ -19,16 +19,20 @@ sandbox *args:
     test -f demo-output/sandbox/capsule.db
     uv run --locked {{ quote(python) }} tab_capsule.py "$@" --data-dir demo-output/sandbox --chrome-dir demo-output/sandbox/chrome
 
-# Install Python and browser-test development dependencies.
+# Install the Python development tools (Ruff, mypy); tests need none of them.
 setup:
     uv sync --locked
-    npm ci
 
-# Run all Python and browser checks.
-check: check-python test-browser
+# Run lint, formatting, type checks, all tests (including the browser) and compilation.
+check: lint typecheck test compile
 
-# Run Python checks without Node or a browser.
-check-python: lint typecheck test
+# Run checks that need only python3 and Chrome: no uv, no network, no packages.
+check-offline:
+    {{ quote(python) }} -m unittest discover -v
+    {{ quote(python) }} -m compileall -q tab_capsule tests tab_capsule.py demo.py
+
+# Compile all Python sources.
+compile:
     uv run --locked {{ quote(python) }} -m compileall -q tab_capsule tests tab_capsule.py demo.py
 
 # Check Python lint, import order and formatting.
@@ -44,13 +48,17 @@ typecheck:
 format:
     uv run --locked ruff format .
 
-# Run synthetic collection and rendering tests.
+# Run all tests, including headless-Chrome page checks (CHROME_BIN selects the browser).
 test:
     uv run --locked {{ quote(python) }} -m unittest discover -v
 
-# Run browser checks with an isolated temporary profile.
+# Run tests without a browser.
+test-python:
+    TAB_CAPSULE_SKIP_BROWSER=1 uv run --locked {{ quote(python) }} -m unittest discover -v
+
+# Run only the headless-Chrome page checks, each in an isolated browser context.
 test-browser:
-    PYTHON={{ quote(python) }} uv run --locked npm test
+    uv run --locked {{ quote(python) }} -m unittest -v tests.test_browser
 
 # Invoke the CLI with any arguments, for example: just cli --help.
 cli *args:
