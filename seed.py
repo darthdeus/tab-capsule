@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parent
 
 
 def small_corpus(start: datetime.datetime, days: int, visits_per_day: int) -> corpus.Profile:
-    """The fixed four-page demo; browser tests assert on its exact contents."""
+    """The fixed four-page demo; tests assert on its exact contents."""
     profile = corpus.Profile()
     for day in range(days):
         taken_at = (start + datetime.timedelta(days=day)).timestamp()

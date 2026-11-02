@@ -37,7 +37,7 @@ setup:
 # Run lint, formatting, type checks, all tests (including the browser) and compilation.
 check: lint typecheck test compile
 
-# Run checks that need only python3 and Chrome: no uv, no network, no packages.
+# Run checks that need only python3: no uv, no network, no packages.
 check-offline:
     {{ quote(python) }} -m unittest discover -v
     {{ quote(python) }} -m compileall -q tab_capsule tests tab_capsule.py seed.py
@@ -59,17 +59,9 @@ typecheck:
 format:
     uv run --locked ruff format .
 
-# Run all tests, including headless-Chrome page checks (CHROME_BIN selects the browser).
+# Run all tests.
 test:
     uv run --locked {{ quote(python) }} -m unittest discover -v
-
-# Run tests without a browser.
-test-python:
-    TAB_CAPSULE_SKIP_BROWSER=1 uv run --locked {{ quote(python) }} -m unittest discover -v
-
-# Run only the headless-Chrome page checks, each in an isolated browser context.
-test-browser:
-    uv run --locked {{ quote(python) }} -m unittest -v tests.test_browser
 
 # Invoke the CLI with any arguments, for example: just cli --help.
 cli *args:

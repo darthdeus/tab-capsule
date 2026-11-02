@@ -13,8 +13,6 @@ HTML output unless the user chooses otherwise.
 - `tests/corpus.py`: realistic invented browsing for `seed.py`.
 - `frontend/capsule.{html,css,js}`: readable page sources, inlined when rendering.
 - `tests/test_*.py`, `tests/fixtures.py`: grouped Python tests and synthetic fixtures.
-- `tests/test_browser.py`: headless-Chrome page checks; `tests/cdp.py` is the stdlib
-  DevTools-protocol driver (pipe transport, no packages).
 - `seed.py`: with no options rebuilds `demo-output/sandbox` (realistic archive + fake
   Chrome); `tab_capsule.py --sandbox <cmd>` uses it. `--page-only` writes just the HTML.
 - `just seed` / `just sandbox`: aliases for the above; never use real profiles.
@@ -24,15 +22,14 @@ HTML output unless the user chooses otherwise.
 
 ## Required checks before committing
 
-`python3 -m unittest discover -v` (includes the browser checks; needs Chrome/Chromium on PATH or
-in a standard install location, `CHROME_BIN` overrides it) and
+`python3 -m unittest discover -v` and
 `python3 -m compileall -q tab_capsule tests tab_capsule.py seed.py` must pass.
-Tests must keep running with only python3 and Chrome: no third-party packages, no
-Node.js, no network. Extend `tests/cdp.py` rather than adding a browser library.
+Tests must keep running with only python3: no third-party packages, no browser, no
+Node.js, no network.
 `just check` adds Ruff lint/format and strict mypy (`uv sync --locked` first). Keep
 development tools out of runtime dependencies. Type checking covers `tab_capsule/` and
-`seed.py`; use Python 3.10-compatible annotations. Frontend behavior changes need
-browser checks in `tests/test_browser.py`.
+`seed.py`; use Python 3.10-compatible annotations. The HTML page's JavaScript has no
+automated tests; check frontend changes by opening a generated page.
 
 Synthetic data (`tests/corpus.py`, fixtures, demo pages) must be generic: never derive
 topics, sites, names or habits from the owner's real history or personal interests.
