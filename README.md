@@ -18,7 +18,19 @@ python3 tab_capsule.py run --chrome-dir "$HOME/.config/google-chrome" --data-dir
 python3 tab_capsule.py stats
 ```
 
-Open `~/.local/share/tab-capsule/index.html` in your browser. `snapshot`,
+Open `~/.local/share/tab-capsule/index.html` in your browser, or browse the archive in
+the terminal:
+
+```sh
+python3 tab_capsule.py browse
+```
+
+`browse` shows the days on the left and, for the selected day, each profile's open tabs
+(carried forward from the last snapshot) followed by that day's history, newest first.
+Keys: `↑↓`/`jk` move, `←→`/`hl`/`Tab` switch between days and entries, `[` `]` older
+or newer day, `PgUp`/`PgDn`, `g`/`G` first/last, `Enter` shows the full URL, `?` help,
+`Esc`/`q` quit. It uses the standard library's curses and needs an interactive
+terminal. It has no search yet; the HTML page does. `snapshot`,
 `import-history`, and `render` can also be run separately. `TAB_CAPSULE_DIR` overrides
 the default data directory. Scheduling is optional; run the command manually or
 from your own scheduler.
@@ -112,12 +124,15 @@ to Chrome over the DevTools protocol on a pipe (`--remote-debugging-pipe`), impl
 with the standard library in `tests/cdp.py`.
 
 `tab_capsule.py` launches the `tab_capsule/` package; `python3 -m tab_capsule` works
-too. The package has four modules:
+too. The package has five modules:
 
 - `chrome.py`: session parsing, profile discovery and History import.
 - `storage.py`: SQLite schema, profiles and snapshot writes.
 - `render.py`: archive reads, compact page data and self-contained HTML assembly.
 - `cli.py`: command parsing, collection orchestration and statistics.
+- `tui.py`: the `browse` terminal browser. `Archive` derives day views from the page
+  data, `Browser` holds state, keys and `render()` (styled text lines, testable without
+  a terminal); `run()` is a thin curses loop around them.
 
 Keep `tab_capsule.py`, `tab_capsule/` and `frontend/` together when copying the
 source tool. Edit frontend sources, rerun `just demo` or `just cli render`, and

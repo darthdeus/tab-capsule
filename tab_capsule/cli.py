@@ -8,6 +8,8 @@ Each run, for every Chrome profile:
      INSERT OR IGNORE, so rows survive Chrome's 90-day expiry;
   3. regenerates a self-contained index.html "time capsule" browser in the data dir.
 
+`browse` opens the archive in an interactive terminal browser instead (curses).
+
 Python stdlib only. Data dir: ~/.local/share/tab-capsule (override: --data-dir or
 TAB_CAPSULE_DIR). The data is private browsing history: it is never published anywhere.
 """
@@ -15,6 +17,7 @@ TAB_CAPSULE_DIR). The data is private browsing history: it is never published an
 import argparse
 import os
 import sqlite3
+import sys
 import time
 from collections.abc import Sequence
 from contextlib import closing
@@ -27,7 +30,7 @@ from .chrome import (
     replay_session,
 )
 from .models import Log
-from .render import cmd_render, local_day
+from .render import build_data, cmd_render, local_day
 from .storage import open_db, set_profile_name, store_snapshot
 
 DEFAULT_CHROME_DIR = os.path.expanduser("~/.config/google-chrome")
@@ -117,7 +120,9 @@ def cmd_stats(db: sqlite3.Connection, log: Log = print) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
-    ap.add_argument("command", choices=["run", "snapshot", "import-history", "render", "stats"])
+    ap.add_argument(
+        "command", choices=["run", "snapshot", "import-history", "render", "stats", "browse"]
+    )
     ap.add_argument("--chrome-dir", default=DEFAULT_CHROME_DIR)
     ap.add_argument("--data-dir", default=os.environ.get("TAB_CAPSULE_DIR") or DEFAULT_DATA_DIR)
     a = ap.parse_args(argv)
@@ -134,4 +139,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             cmd_render(db, a.data_dir)
         if a.command == "stats":
             cmd_stats(db)
+        if a.command == "browse":
+            if not (sys.stdin.isatty() and sys.stdout.isatty()):
+                print("browse needs an interactive terminal", file=sys.stderr)
+                return 2
+            from .tui import run  # curses is unavailable on some platforms
+
+            run(build_data(db))
         return 0 if success else 1

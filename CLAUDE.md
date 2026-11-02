@@ -8,6 +8,9 @@ HTML output unless the user chooses otherwise.
 
 - `tab_capsule.py`: source-checkout CLI entry point; `python -m tab_capsule` also works.
 - `tab_capsule/`: Chrome parsing/import, SQLite writes, page rendering and CLI modules.
+- `tab_capsule/tui.py`: `browse` curses terminal browser. Keep state and `render()`
+  free of curses; `tests/test_tui.py` tests them directly plus a pty smoke test.
+- `tests/corpus.py`: realistic invented browsing for `demo.py --corpus realistic`.
 - `frontend/capsule.{html,css,js}`: readable page sources, inlined when rendering.
 - `tests/test_*.py`, `tests/fixtures.py`: grouped Python tests and synthetic fixtures.
 - `tests/test_browser.py`: headless-Chrome page checks; `tests/cdp.py` is the stdlib
