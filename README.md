@@ -103,6 +103,7 @@ just test-browser    # only the headless-Chrome checks
 just format          # format Python sources
 just demo            # synthetic page at demo-output/index.html
 just seed            # python3 seed.py; just sandbox browse = tab_capsule.py --sandbox browse
+just archive         # dist/tab-capsule.zip: committed source for upload, no agent files
 just cli --help      # CLI help; e.g. just cli render --data-dir /path/to/archive
 just                 # list all recipes
 ```

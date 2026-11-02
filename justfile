@@ -18,6 +18,18 @@ seed *args:
 sandbox *args:
     uv run --locked {{ quote(python) }} tab_capsule.py --sandbox "$@"
 
+# Zip the committed source for upload: HEAD only (no .git, venvs, caches or local data),
+# without agent instructions. Uncommitted changes are not included.
+archive output="dist/tab-capsule.zip":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+        echo "warning: uncommitted changes are not in the archive" >&2
+    fi
+    mkdir -p "$(dirname "$1")"
+    git archive --format=zip --prefix=tab-capsule/ -o "$1" HEAD -- . ':!AGENTS.md' ':!CLAUDE.md'
+    echo "$1: $(git rev-parse --short HEAD), $(unzip -Z1 "$1" | grep -vc '/$') files"
+
 # Install the Python development tools (Ruff, mypy); tests need none of them.
 setup:
     uv sync --locked
