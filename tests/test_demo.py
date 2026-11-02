@@ -3,6 +3,7 @@
 import contextlib
 import io
 import os
+import re
 import sqlite3
 import tempfile
 import unittest
@@ -63,6 +64,67 @@ class DemoTest(unittest.TestCase):
             with contextlib.closing(sqlite3.connect(outputs[0] / "capsule.db")) as db:
                 self.assertEqual(db.execute("SELECT COUNT(*) FROM visits").fetchone()[0], 200)
                 self.assertEqual(db.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0], 10)
+
+    def test_realistic_corpus_round_trips_and_has_the_shape_of_real_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "realistic"
+            self.generate(
+                output, "--keep-db", "--corpus", "realistic", "--days", "12",
+                "--visits-per-day", "150", "--profiles", "2",
+            )  # fmt: skip
+            data = render.extract_data((output / "index.html").read_text(encoding="utf-8"))
+            S, V, T = data["S"], data["V"], data["T"]
+            self.assertEqual(len(V), 12 * 150 * 2)
+            self.assertLessEqual(V[-1][0], int(demo.END.timestamp()), "no visits in the future")
+
+            # Repeat visits and a long tail: many distinct pages, but favourites dominate.
+            counts: dict[int, int] = {}
+            for visit in V:
+                counts[visit[1]] = counts.get(visit[1], 0) + 1
+            self.assertGreater(len(counts), len(V) // 4)
+            self.assertGreater(max(counts.values()), len(V) // 50)
+            self.assertGreater(
+                sum(S[u].startswith("https://www.google.com/search?") for u in counts), 50
+            )
+
+            # Short terms mostly occur inside longer words, as in real history.
+            texts = [(S[v[1]] + " " + S[v[2]]).lower() for v in V]
+            anywhere = [t for t in texts if "gh" in t]
+            word_start = [t for t in anywhere if re.search(r"(?<![a-z0-9])gh", t)]
+            self.assertGreater(len(word_start), 0)
+            self.assertGreater(len(anywhere), 10 * len(word_start))
+
+            # Tabs drift: several windows, pinned tabs, and day-to-day changes.
+            self.assertTrue(any(len(snapshot["w"]) > 1 for snapshot in T))
+            self.assertTrue(all(snapshot["w"][0][0][2] for snapshot in T), "pinned first tab")
+            self.assertGreater(sum(tab[3] for s in T for w in s["w"] for tab in w), len(T))
+            closed = 0
+            for earlier, later in zip(T, T[1:]):
+                if earlier["p"] == later["p"]:
+                    after = {tab[0] for w in later["w"] for tab in w}
+                    closed += any(tab[0] not in after for w in earlier["w"] for tab in w)
+            self.assertGreater(closed, len(T) // 2, "tabs also close from day to day")
+
+            # The fake Chrome profiles match the archive exactly.
+            with contextlib.redirect_stdout(io.StringIO()) as log:
+                status = cli.main(
+                    ["run", "--data-dir", str(output), "--chrome-dir", str(output / "chrome")]
+                )
+            self.assertEqual(status, 0)
+            self.assertEqual(log.getvalue().count("(unchanged)"), 2, log.getvalue())
+            self.assertEqual(log.getvalue().count("+0 visits"), 2, log.getvalue())
+
+    def test_realistic_corpus_is_repeatable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            outputs = [Path(tmp) / name for name in ("one", "two")]
+            for output in outputs:
+                self.generate(
+                    output, "--corpus", "realistic", "--days", "4", "--visits-per-day", "40",
+                    "--profiles", "2",
+                )  # fmt: skip
+            self.assertEqual(
+                (outputs[0] / "index.html").read_bytes(), (outputs[1] / "index.html").read_bytes()
+            )
 
     def test_seed_refuses_existing_archives(self):
         with tempfile.TemporaryDirectory() as tmp:

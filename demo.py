@@ -13,6 +13,7 @@ from pathlib import Path
 
 from tab_capsule import chrome, render, storage
 from tab_capsule.models import Tab
+from tests import corpus
 from tests.fixtures import Snss, make_history
 
 PAGES = [
@@ -24,6 +25,29 @@ PAGES = [
 END = datetime.datetime(2026, 9, 4, 12)
 
 
+def small_corpus(start: datetime.datetime, days: int, visits_per_day: int) -> corpus.Profile:
+    """The fixed four-page demo; browser tests assert on its exact contents."""
+    profile = corpus.Profile()
+    for day in range(days):
+        taken_at = (start + datetime.timedelta(days=day)).timestamp()
+        offset = day % len(PAGES) if day >= 3 else 0
+        pages = PAGES[offset:] + PAGES[:offset]
+        tabs: list[Tab] = [
+            {"url": url, "title": title, "pinned": index == 0}
+            for index, (url, title) in enumerate(pages[: min(day + 2, len(PAGES))])
+        ]
+        profile.snapshots.append((taken_at, [tabs]))
+        interval = min(300.0, 8 * 3600 / visits_per_day)
+        for visit in range(visits_per_day):
+            cycle, page_index = divmod(visit, len(PAGES))
+            url, title = PAGES[page_index]
+            if cycle:
+                url += f"?article={cycle}"
+                title += f" · article {cycle}"
+            profile.visits.append((url, title, taken_at + visit * interval, corpus.TYPED))
+    return profile
+
+
 def populate(
     db: sqlite3.Connection,
     *,
@@ -31,41 +55,31 @@ def populate(
     visits_per_day: int,
     profiles: int,
     chrome_dir: Path | None,
+    kind: str = "small",
 ) -> None:
     # Larger datasets extend backward so collection does not start from future snapshots.
     start = END - datetime.timedelta(days=days)
+    if kind == "realistic":
+        generated = corpus.generate(
+            start=start, days=days, visits_per_day=visits_per_day, profiles=profiles
+        )
+    else:
+        generated = [small_corpus(start, days, visits_per_day) for _ in range(profiles)]
     names = {}
-    for profile_index in range(profiles):
+    for profile_index, archive in enumerate(generated):
         profile = "Default" if profile_index == 0 else f"Profile {profile_index}"
         name = "Demo" if profile_index == 0 else f"Demo {profile_index + 1}"
         names[profile] = {"name": name}
         storage.set_profile_name(db, profile, name)
-        history: list[tuple[int, str, str, float]] = []
-        tabs: list[Tab] = []
-        for day in range(days):
-            taken_at = (start + datetime.timedelta(days=day)).timestamp()
-            offset = day % len(PAGES) if day >= 3 else 0
-            pages = PAGES[offset:] + PAGES[:offset]
-            tabs = [
-                {"url": url, "title": title, "pinned": index == 0}
-                for index, (url, title) in enumerate(pages[: min(day + 2, len(PAGES))])
-            ]
-            storage.store_snapshot(db, profile, [tabs], now=taken_at, source="synthetic")
-            interval = min(300.0, 8 * 3600 / visits_per_day)
-            for visit in range(visits_per_day):
-                cycle, page_index = divmod(visit, len(PAGES))
-                url, title = PAGES[page_index]
-                if cycle:
-                    url += f"?article={cycle}"
-                    title += f" · article {cycle}"
-                history.append((len(history) + 1, url, title, taken_at + visit * interval))
+        for taken_at, windows in archive.snapshots:
+            storage.store_snapshot(db, profile, windows, now=taken_at, source="synthetic")
         with db:
             db.executemany(
                 "INSERT INTO visits(profile,visit_time,url,title,transition,visit_duration)"
                 " VALUES(?,?,?,?,?,?)",
                 (
-                    (profile, chrome.unix_to_webkit(timestamp), url, title, 1, 30)
-                    for _, url, title, timestamp in history
+                    (profile, chrome.unix_to_webkit(t), url, title, transition, 30)
+                    for url, title, t, transition in archive.visits
                 ),
             )
 
@@ -73,12 +87,19 @@ def populate(
             profile_dir = chrome_dir / profile
             sessions = profile_dir / "Sessions"
             sessions.mkdir(parents=True)
-            make_history(profile_dir / "History", history)
-            session = Snss().window_type(1)
-            for tab_id, tab in enumerate(tabs, start=1):
-                session.tab_window(1, tab_id).tab_index(tab_id, tab_id - 1)
-                session.nav(tab_id, 0, tab["url"], tab["title"])
-                session.pinned(tab_id, tab["pinned"])
+            make_history(
+                profile_dir / "History",
+                ((i, url, title, t) for i, (url, title, t, _) in enumerate(archive.visits, 1)),
+            )
+            session = Snss()
+            tab_id = 0
+            for window_id, window in enumerate(archive.snapshots[-1][1], start=1):
+                session.window_type(window_id)
+                for index, tab in enumerate(window):
+                    tab_id += 1
+                    session.tab_window(window_id, tab_id).tab_index(tab_id, index)
+                    session.nav(tab_id, 0, tab["url"], tab["title"])
+                    session.pinned(tab_id, tab["pinned"])
             (sessions / "Session_1").write_bytes(session.bytes())
 
     if chrome_dir is not None:
@@ -105,6 +126,13 @@ def main(argv: Sequence[str] | None = None) -> None:
         "--visits-per-day", type=positive_int, default=4, help="visits per profile/day"
     )
     parser.add_argument("--profiles", type=positive_int, default=1)
+    parser.add_argument(
+        "--corpus",
+        choices=["small", "realistic"],
+        default="small",
+        help="small: four fixed pages (tests rely on it); realistic: hundreds of invented"
+        " pages with repeat visits, searches and drifting tabs",
+    )
     args = parser.parse_args(argv)
     if args.keep_db and args.output_dir.exists():
         parser.error("persistent demo output directory must be new; choose another --output-dir")
@@ -119,6 +147,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 visits_per_day=args.visits_per_day,
                 profiles=args.profiles,
                 chrome_dir=staging / "chrome" if args.keep_db else None,
+                kind=args.corpus,
             )
             data = render.build_data(db)
             data["generated"] = int(END.timestamp())

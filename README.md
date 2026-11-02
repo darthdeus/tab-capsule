@@ -53,8 +53,15 @@ existing output directory; choose a new one to generate a different dataset:
 just seed --output-dir /tmp/tab-capsule-large --days 90 --visits-per-day 1000 --profiles 3
 just cli stats --data-dir /tmp/tab-capsule-large
 # Without just:
-uv run --locked python demo.py --keep-db --output-dir /tmp/tab-capsule-dev --days 30
+python3 demo.py --keep-db --corpus realistic --output-dir /tmp/tab-capsule-dev --days 30
 ```
+
+`just seed` uses `--corpus realistic` (`tests/corpus.py`): thousands of invented pages
+on familiar kinds of sites, a few favourites visited many times a day, a long tail of
+searches and one-off pages, tabs that drift across windows, and short words that often
+occur inside longer ones. It approximates the shape of a real archive without any real
+history. The default `--corpus small` is the fixed four-page demo used by the browser
+tests. Without just: `python3 demo.py --keep-db --corpus realistic --output-dir DIR`.
 
 Data is repeatable for the same options and local timezone. The seeder reuses the
 synthetic Chrome builders in `tests/fixtures.py`; it needs no installed browser.

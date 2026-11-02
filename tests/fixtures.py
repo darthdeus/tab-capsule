@@ -106,6 +106,7 @@ def make_history(path: str | os.PathLike[str], rows: Iterable[tuple[int, str, st
     CREATE TABLE IF NOT EXISTS visits(id INTEGER PRIMARY KEY AUTOINCREMENT,url INTEGER NOT NULL,visit_time INTEGER NOT NULL,
       from_visit INTEGER,external_referrer_url TEXT,transition INTEGER DEFAULT 0 NOT NULL,segment_id INTEGER,
       visit_duration INTEGER DEFAULT 0 NOT NULL);
+    CREATE INDEX IF NOT EXISTS urls_url_index ON urls(url);
     """)
     for vid, url, title, t in rows:
         r = db.execute("SELECT id FROM urls WHERE url=?", (url,)).fetchone()

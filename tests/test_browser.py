@@ -225,6 +225,19 @@ class BrowserTest(unittest.TestCase):
             sorted(page.texts(f"{MAIN_DETAILS}:first-of-type .prof")), ["Demo", "Demo 2"]
         )
 
+    def test_realistic_corpus_renders_and_reports_search_counts(self) -> None:
+        output = self.temporary / "realistic"
+        self.generate(
+            output, "--corpus", "realistic", "--days", "5", "--visits-per-day", "80",
+            "--profiles", "2",
+        )  # fmt: skip
+        page = self.open_archive(output / "index.html")
+        self.assertEqual(page.count("#days a"), 5)
+        self.assertGreater(page.count("details.hr li"), 50)
+        self.query(page, "gh")
+        self.assertRegex(page.inner_text("#main > .sub"), r"^\d+ visits · \d+ open-tab matches$")
+        self.assertGreater(page.count(".jump"), 20)
+
     def test_history_jumps_keep_archive_days_in_other_browser_timezones(self) -> None:
         before_midnight = timegm((2026, 9, 1, 23, 30, 0))
         after_midnight = timegm((2026, 9, 2, 0, 30, 0))
