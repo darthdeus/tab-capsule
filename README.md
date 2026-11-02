@@ -58,8 +58,9 @@ just sandbox run                  # collect from the generated fake Chrome profi
 Open `demo-output/sandbox/index.html`. The directory also contains `capsule.db` and
 `chrome/` with synthetic History databases and session files. `just sandbox` pins
 both CLI paths to this workspace, regardless of your normal data-directory setting.
-All of these generated files are ignored by Git. Persistent seeding refuses an
-existing output directory; choose a new one to generate a different dataset:
+All of these generated files are ignored by Git. `just seed` replaces
+`demo-output/sandbox` each time, since it only ever holds seeded data. `demo.py --keep-db`
+itself refuses an existing output directory; choose a new one for another dataset:
 
 ```sh
 just seed --output-dir /tmp/tab-capsule-large --days 90 --visits-per-day 1000 --profiles 3
