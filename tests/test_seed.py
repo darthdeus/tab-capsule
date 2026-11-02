@@ -145,7 +145,12 @@ class SeedTest(unittest.TestCase):
     def test_no_options_rebuild_the_sandbox_with_realistic_defaults(self):
         with tempfile.TemporaryDirectory() as tmp:
             sandbox = Path(tmp) / "checkout" / "demo-output" / "sandbox"
-            with patch.object(cli, "SANDBOX_DIR", sandbox):
+            # A smaller year keeps the test fast; the real default is checked below.
+            sizes = {**seed.DEFAULT_SIZES, "realistic": (30, 100, 2)}
+            with (
+                patch.object(cli, "SANDBOX_DIR", sandbox),
+                patch.object(seed, "DEFAULT_SIZES", sizes),
+            ):
                 for _ in range(2):  # a second run replaces the first sandbox
                     with contextlib.redirect_stdout(io.StringIO()) as log:
                         self.assertEqual(seed.main([]), sandbox)
@@ -157,6 +162,7 @@ class SeedTest(unittest.TestCase):
                 self.assertEqual(db.execute("SELECT COUNT(*) FROM profiles").fetchone()[0], 2)
                 distinct = db.execute("SELECT COUNT(DISTINCT url) FROM visits").fetchone()[0]
             self.assertGreater(distinct, 1000, "realistic corpus by default")
+        self.assertEqual(seed.DEFAULT_SIZES["realistic"], (365, 250, 2), "a year by default")
 
     def test_page_only_defaults_to_demo_output_without_a_database(self):
         with tempfile.TemporaryDirectory() as tmp:

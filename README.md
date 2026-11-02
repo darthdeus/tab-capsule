@@ -43,7 +43,7 @@ profile fails; `run` still renders the successfully collected data.
 Try the tool, or develop it, without touching your browser data:
 
 ```sh
-python3 seed.py                              # build the sandbox (about a second)
+python3 seed.py                              # build the sandbox (a year; ~7 seconds)
 python3 tab_capsule.py --sandbox browse      # terminal browser on it
 python3 tab_capsule.py --sandbox stats
 python3 tab_capsule.py --sandbox run         # collect from its fake Chrome profiles
@@ -56,14 +56,14 @@ archive (`capsule.db`), its `index.html` page, and `chrome/` with fake Chrome pr
 again rebuilds the sandbox; it only replaces directories that a previous `seed.py`
 created (they contain a `.tab-capsule-seed` marker), never a real archive.
 
-The default realistic corpus (`tests/corpus.py`) has 2 profiles × 30 days × 100 visits
-by a generic game/web developer: thousands of invented pages on familiar kinds of sites, a few favourites visited many
+The default realistic corpus (`tests/corpus.py`) has 2 profiles × 365 days × 250 visits
+(182,500 visits) by a generic game/web developer: thousands of invented pages on familiar kinds of sites, a few favourites visited many
 times a day, a long tail of searches and one-off pages, tabs that drift across windows,
 and short words that often occur inside longer ones. It approximates the shape of a
 real archive without any real history. Other sizes and places:
 
 ```sh
-python3 seed.py --days 365 --visits-per-day 500 --profiles 1    # a year-sized archive
+python3 seed.py --days 30                    # a month: quicker to rebuild
 python3 seed.py --output-dir /tmp/tc-large --days 90            # elsewhere
 python3 tab_capsule.py browse --data-dir /tmp/tc-large
 python3 seed.py --page-only                  # just demo-output/index.html, no database

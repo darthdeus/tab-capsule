@@ -121,7 +121,9 @@ def positive_int(value: str) -> int:
     return number
 
 
-DEFAULT_SIZES = {"small": (3, 4, 1), "realistic": (30, 100, 2)}  # days, visits/day, profiles
+# days, visits per day, profiles. A year of history by default, so search and loading are
+# always tried at a realistic scale (182,500 visits; seeds in seconds).
+DEFAULT_SIZES = {"small": (3, 4, 1), "realistic": (365, 250, 2)}
 
 
 def main(argv: Sequence[str] | None = None) -> Path:
@@ -149,9 +151,9 @@ def main(argv: Sequence[str] | None = None) -> Path:
         help="realistic (default): thousands of invented pages with favourites, searches and"
         " drifting tabs; small: four fixed pages that the tests rely on",
     )
-    parser.add_argument("--days", type=positive_int, help="default: 30 (small: 3)")
+    parser.add_argument("--days", type=positive_int, help="default: 365 (small: 3)")
     parser.add_argument(
-        "--visits-per-day", type=positive_int, help="per profile; default: 100 (small: 4)"
+        "--visits-per-day", type=positive_int, help="per profile; default: 250 (small: 4)"
     )
     parser.add_argument("--profiles", type=positive_int, help="default: 2 (small: 1)")
     args = parser.parse_args(argv)
