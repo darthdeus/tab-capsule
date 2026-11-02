@@ -10,12 +10,12 @@ HTML output unless the user chooses otherwise.
 - `tab_capsule/`: Chrome parsing/import, SQLite writes, page rendering and CLI modules.
 - `tab_capsule/tui.py`: `browse` curses terminal browser. Keep state and `render()`
   free of curses; `tests/test_tui.py` tests them directly plus a pty smoke test.
-- `tests/corpus.py`: realistic invented browsing for `demo.py --corpus realistic`.
+- `tests/corpus.py`: realistic invented browsing for `seed.py`.
 - `frontend/capsule.{html,css,js}`: readable page sources, inlined when rendering.
 - `tests/test_*.py`, `tests/fixtures.py`: grouped Python tests and synthetic fixtures.
 - `tests/test_browser.py`: headless-Chrome page checks; `tests/cdp.py` is the stdlib
   DevTools-protocol driver (pipe transport, no packages).
-- `demo.py`: with no options rebuilds `demo-output/sandbox` (realistic archive + fake
+- `seed.py`: with no options rebuilds `demo-output/sandbox` (realistic archive + fake
   Chrome); `tab_capsule.py --sandbox <cmd>` uses it. `--page-only` writes just the HTML.
 - `just seed` / `just sandbox`: aliases for the above; never use real profiles.
 - `justfile`: development checks, synthetic demo and CLI shortcuts.
@@ -26,12 +26,12 @@ HTML output unless the user chooses otherwise.
 
 `python3 -m unittest discover -v` (includes the browser checks; needs Chrome/Chromium,
 `CHROME_BIN` overrides the path) and
-`python3 -m compileall -q tab_capsule tests tab_capsule.py demo.py` must pass.
+`python3 -m compileall -q tab_capsule tests tab_capsule.py seed.py` must pass.
 Tests must keep running with only python3 and Chrome: no third-party packages, no
 Node.js, no network. Extend `tests/cdp.py` rather than adding a browser library.
 `just check` adds Ruff lint/format and strict mypy (`uv sync --locked` first). Keep
 development tools out of runtime dependencies. Type checking covers `tab_capsule/` and
-`demo.py`; use Python 3.10-compatible annotations. Frontend behavior changes need
+`seed.py`; use Python 3.10-compatible annotations. Frontend behavior changes need
 browser checks in `tests/test_browser.py`.
 
 Never read actual Chrome profiles for tests. Use temporary directories and synthetic

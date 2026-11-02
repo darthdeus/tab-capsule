@@ -38,23 +38,23 @@ from your own scheduler.
 Collection continues across profiles and returns a nonzero exit status if any
 profile fails; `run` still renders the successfully collected data.
 
-## Synthetic demo
+## Synthetic sandbox
 
 Try the tool, or develop it, without touching your browser data:
 
 ```sh
-python3 demo.py                              # build the sandbox (about a second)
+python3 seed.py                              # build the sandbox (about a second)
 python3 tab_capsule.py --sandbox browse      # terminal browser on it
 python3 tab_capsule.py --sandbox stats
 python3 tab_capsule.py --sandbox run         # collect from its fake Chrome profiles
 ```
 
-`demo.py` writes `demo-output/sandbox/` in the source checkout (ignored by Git): an
+`seed.py` writes `demo-output/sandbox/` in the source checkout (ignored by Git): an
 archive (`capsule.db`), its `index.html` page, and `chrome/` with fake Chrome profiles
 (History databases and session files). `--sandbox` points both `--data-dir` and
-`--chrome-dir` there, so even `run` cannot read your real Chrome. Running `demo.py`
-again rebuilds the sandbox; it only replaces directories that a previous `demo.py`
-created (they contain a `.tab-capsule-demo` marker), never a real archive.
+`--chrome-dir` there, so even `run` cannot read your real Chrome. Running `seed.py`
+again rebuilds the sandbox; it only replaces directories that a previous `seed.py`
+created (they contain a `.tab-capsule-seed` marker), never a real archive.
 
 The default realistic corpus (`tests/corpus.py`) has 2 profiles × 30 days × 100 visits:
 thousands of invented pages on familiar kinds of sites, a few favourites visited many
@@ -63,11 +63,11 @@ and short words that often occur inside longer ones. It approximates the shape o
 real archive without any real history. Other sizes and places:
 
 ```sh
-python3 demo.py --days 365 --visits-per-day 500 --profiles 1    # a year-sized archive
-python3 demo.py --output-dir /tmp/tc-large --days 90            # elsewhere
+python3 seed.py --days 365 --visits-per-day 500 --profiles 1    # a year-sized archive
+python3 seed.py --output-dir /tmp/tc-large --days 90            # elsewhere
 python3 tab_capsule.py browse --data-dir /tmp/tc-large
-python3 demo.py --page-only                  # just demo-output/index.html, no database
-python3 demo.py --corpus small --page-only   # the fixed four-page demo the tests use
+python3 seed.py --page-only                  # just demo-output/index.html, no database
+python3 seed.py --corpus small --page-only   # the fixed four-page demo the tests use
 ```
 
 Data is repeatable for the same options and local timezone. The seeder reuses the
@@ -82,7 +82,7 @@ packages, no Node.js and no network access.
 
 ```sh
 python3 -m unittest discover -v
-python3 -m compileall -q tab_capsule tests tab_capsule.py demo.py
+python3 -m compileall -q tab_capsule tests tab_capsule.py seed.py
 ```
 
 `tests/test_browser.py` opens generated pages in headless Chrome and drives them with
@@ -102,7 +102,7 @@ just test-python     # tests without a browser
 just test-browser    # only the headless-Chrome checks
 just format          # format Python sources
 just demo            # synthetic page at demo-output/index.html
-just seed            # python3 demo.py; just sandbox browse = tab_capsule.py --sandbox browse
+just seed            # python3 seed.py; just sandbox browse = tab_capsule.py --sandbox browse
 just cli --help      # CLI help; e.g. just cli render --data-dir /path/to/archive
 just                 # list all recipes
 ```

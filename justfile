@@ -8,11 +8,11 @@ default:
 
 # Generate a standalone demo page (no database) using only synthetic data.
 demo output_dir="demo-output":
-    uv run --locked {{ quote(python) }} demo.py --page-only --output-dir "$1"
+    uv run --locked {{ quote(python) }} seed.py --page-only --output-dir "$1"
 
-# Rebuild the sandbox: a realistic synthetic archive with fake Chrome profiles (same as `python3 demo.py`).
+# Rebuild the sandbox: a realistic synthetic archive with fake Chrome profiles (same as `python3 seed.py`).
 seed *args:
-    uv run --locked {{ quote(python) }} demo.py "$@"
+    uv run --locked {{ quote(python) }} seed.py "$@"
 
 # Run the CLI on the sandbox, e.g. `just sandbox browse` (same as `python3 tab_capsule.py --sandbox ...`).
 sandbox *args:
@@ -28,11 +28,11 @@ check: lint typecheck test compile
 # Run checks that need only python3 and Chrome: no uv, no network, no packages.
 check-offline:
     {{ quote(python) }} -m unittest discover -v
-    {{ quote(python) }} -m compileall -q tab_capsule tests tab_capsule.py demo.py
+    {{ quote(python) }} -m compileall -q tab_capsule tests tab_capsule.py seed.py
 
 # Compile all Python sources.
 compile:
-    uv run --locked {{ quote(python) }} -m compileall -q tab_capsule tests tab_capsule.py demo.py
+    uv run --locked {{ quote(python) }} -m compileall -q tab_capsule tests tab_capsule.py seed.py
 
 # Check Python lint, import order and formatting.
 lint:

@@ -18,7 +18,7 @@ import unittest
 from pathlib import Path
 from typing import Any
 
-import demo
+import seed
 from tab_capsule import cli, tui
 from tab_capsule.models import PageData
 
@@ -264,7 +264,7 @@ class TerminalTest(unittest.TestCase):
     def test_browse_runs_in_a_terminal_and_quits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             with contextlib.redirect_stdout(io.StringIO()):
-                demo.main(["--corpus", "small", "--output-dir", f"{tmp}/archive"])
+                seed.main(["--corpus", "small", "--output-dir", f"{tmp}/archive"])
             pid, fd = pty.fork()
             if pid == 0:  # child: size its terminal before curses reads it, then exec
                 set_winsize(0, rows=24, columns=100)

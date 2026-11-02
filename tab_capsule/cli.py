@@ -13,7 +13,7 @@ Each run, for every Chrome profile:
 Python stdlib only. Data dir: ~/.local/share/tab-capsule (override: --data-dir or
 TAB_CAPSULE_DIR); Chrome dir: ~/.config/google-chrome (--chrome-dir or
 TAB_CAPSULE_CHROME_DIR). The data is private browsing history: it is never published.
---sandbox uses the synthetic archive made by `python3 demo.py` instead of both.
+--sandbox uses the synthetic archive made by `python3 seed.py` instead of both.
 """
 
 import argparse
@@ -38,10 +38,10 @@ from .storage import open_db, set_profile_name, store_snapshot
 
 DEFAULT_CHROME_DIR = os.path.expanduser("~/.config/google-chrome")
 DEFAULT_DATA_DIR = os.path.expanduser("~/.local/share/tab-capsule")
-# Development sandbox created by demo.py in the source checkout: a synthetic archive
+# Development sandbox created by seed.py in the source checkout: a synthetic archive
 # with its own fake Chrome profiles. The marker file says it is safe to replace.
 SANDBOX_DIR = Path(__file__).resolve().parent.parent / "demo-output" / "sandbox"
-SANDBOX_MARKER = ".tab-capsule-demo"
+SANDBOX_MARKER = ".tab-capsule-seed"
 
 
 def cmd_snapshot(
@@ -141,7 +141,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument(
         "--sandbox",
         action="store_true",
-        help="use the synthetic archive and fake Chrome profiles made by `python3 demo.py`"
+        help="use the synthetic archive and fake Chrome profiles made by `python3 seed.py`"
         " (demo-output/sandbox) instead of real data",
     )
     a = ap.parse_args(argv)
@@ -149,7 +149,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if a.data_dir or a.chrome_dir:
             ap.error("--sandbox sets both directories; drop --data-dir/--chrome-dir")
         if not (SANDBOX_DIR / SANDBOX_MARKER).is_file():
-            ap.error(f"no sandbox at {SANDBOX_DIR}; create it with `python3 demo.py`")
+            ap.error(f"no sandbox at {SANDBOX_DIR}; create it with `python3 seed.py`")
         a.data_dir, a.chrome_dir = str(SANDBOX_DIR), str(SANDBOX_DIR / "chrome")
     a.data_dir = a.data_dir or os.environ.get("TAB_CAPSULE_DIR") or DEFAULT_DATA_DIR
     a.chrome_dir = a.chrome_dir or os.environ.get("TAB_CAPSULE_CHROME_DIR") or DEFAULT_CHROME_DIR

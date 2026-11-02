@@ -136,7 +136,7 @@ class CliTest(unittest.TestCase):
 
 
 class SandboxTest(unittest.TestCase):
-    """--sandbox pins both directories to the synthetic archive made by demo.py."""
+    """--sandbox pins both directories to the synthetic archive made by seed.py."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -153,10 +153,10 @@ class SandboxTest(unittest.TestCase):
         return status, out.getvalue()
 
     def seed(self):
-        import demo
+        import seed
 
         with contextlib.redirect_stdout(io.StringIO()):
-            demo.main(["--corpus", "small", "--profiles", "2"])
+            seed.main(["--corpus", "small", "--profiles", "2"])
 
     def test_sandbox_uses_its_own_archive_and_fake_chrome(self):
         self.seed()

@@ -12,7 +12,7 @@ from calendar import timegm
 from pathlib import Path
 from typing import Any
 
-import demo
+import seed
 from tab_capsule.render import render_html
 from tests.cdp import Browser, Page, find_chrome
 
@@ -52,7 +52,7 @@ class BrowserTest(unittest.TestCase):
     @staticmethod
     def generate(output: Path, *options: str) -> None:
         with contextlib.redirect_stdout(io.StringIO()):
-            demo.main(["--output-dir", str(output), *options])
+            seed.main(["--output-dir", str(output), *options])
 
     def fixture(self, name: str, data: dict[str, Any]) -> Path:
         file = self.temporary / f"{name}.html"

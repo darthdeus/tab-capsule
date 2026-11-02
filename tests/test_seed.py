@@ -10,14 +10,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import demo
+import seed
 from tab_capsule import cli, render, storage
 
 
-class DemoTest(unittest.TestCase):
+class SeedTest(unittest.TestCase):
     def generate(self, output, *options):
         with contextlib.redirect_stdout(io.StringIO()):
-            demo.main(["--output-dir", str(output), *options])
+            seed.main(["--output-dir", str(output), *options])
 
     def test_persistent_seed_supports_full_collection_without_real_chrome(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -91,7 +91,7 @@ class DemoTest(unittest.TestCase):
             data = render.extract_data((output / "index.html").read_text(encoding="utf-8"))
             S, V, T = data["S"], data["V"], data["T"]
             self.assertEqual(len(V), 12 * 150 * 2)
-            self.assertLessEqual(V[-1][0], int(demo.END.timestamp()), "no visits in the future")
+            self.assertLessEqual(V[-1][0], int(seed.END.timestamp()), "no visits in the future")
 
             # Repeat visits and a long tail: many distinct pages, but favourites dominate.
             counts: dict[int, int] = {}
@@ -148,7 +148,7 @@ class DemoTest(unittest.TestCase):
             with patch.object(cli, "SANDBOX_DIR", sandbox):
                 for _ in range(2):  # a second run replaces the first sandbox
                     with contextlib.redirect_stdout(io.StringIO()) as log:
-                        self.assertEqual(demo.main([]), sandbox)
+                        self.assertEqual(seed.main([]), sandbox)
             self.assertIn("tab_capsule.py --sandbox browse", log.getvalue())
             self.assertTrue((sandbox / cli.SANDBOX_MARKER).is_file())
             self.assertTrue((sandbox / "chrome" / "Profile 1" / "History").is_file())
@@ -160,9 +160,9 @@ class DemoTest(unittest.TestCase):
 
     def test_page_only_defaults_to_demo_output_without_a_database(self):
         with tempfile.TemporaryDirectory() as tmp:
-            with patch.object(demo, "ROOT", Path(tmp)):
+            with patch.object(seed, "ROOT", Path(tmp)):
                 with contextlib.redirect_stdout(io.StringIO()):
-                    output = demo.main(["--page-only", "--days", "2"])
+                    output = seed.main(["--page-only", "--days", "2"])
             self.assertEqual(output, Path(tmp) / "demo-output")
             self.assertEqual([p.name for p in output.iterdir()], ["index.html"])
 

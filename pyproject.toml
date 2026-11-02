@@ -26,5 +26,5 @@ select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.mypy]
 python_version = "3.10"
-files = ["tab_capsule", "demo.py"]
+files = ["tab_capsule", "seed.py"]
 strict = true
