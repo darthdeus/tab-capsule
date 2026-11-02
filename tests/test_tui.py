@@ -289,7 +289,7 @@ class TerminalTest(unittest.TestCase):
                 os.write(fd, b"\x1b")  # a lone Esc closes the help line
                 read_until(fd, b"? help")
                 os.write(fd, b"q")
-                self.assertEqual(wait_exit(pid), 0)
+                self.assertEqual(wait_exit(pid, fd), 0)
             finally:
                 with contextlib.suppress(ProcessLookupError, ChildProcessError):
                     os.kill(pid, signal.SIGKILL)
@@ -340,13 +340,17 @@ def read_until(fd: int, marker: bytes, timeout: float = 10.0) -> bytes:
     return output
 
 
-def wait_exit(pid: int, timeout: float = 10.0) -> Any:
+def wait_exit(pid: int, fd: int, timeout: float = 10.0) -> Any:
+    # Keep reading while waiting: curses restores the terminal on exit, and a child
+    # blocked writing to a full pty (macOS pty buffers are small) would never exit.
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         done, status = os.waitpid(pid, os.WNOHANG)
         if done:
             return os.waitstatus_to_exitcode(status)
-        time.sleep(0.02)
+        if select.select([fd], [], [], 0.02)[0]:
+            with contextlib.suppress(OSError):
+                os.read(fd, 65536)
     raise AssertionError("browse did not exit after q")
 
 
