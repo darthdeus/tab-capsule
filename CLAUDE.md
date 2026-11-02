@@ -24,8 +24,8 @@ HTML output unless the user chooses otherwise.
 
 ## Required checks before committing
 
-`python3 -m unittest discover -v` (includes the browser checks; needs Chrome/Chromium,
-`CHROME_BIN` overrides the path) and
+`python3 -m unittest discover -v` (includes the browser checks; needs Chrome/Chromium on PATH or
+in a standard install location, `CHROME_BIN` overrides it) and
 `python3 -m compileall -q tab_capsule tests tab_capsule.py seed.py` must pass.
 Tests must keep running with only python3 and Chrome: no third-party packages, no
 Node.js, no network. Extend `tests/cdp.py` rather than adding a browser library.

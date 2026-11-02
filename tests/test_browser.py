@@ -32,7 +32,8 @@ class BrowserTest(unittest.TestCase):
         if chrome is None:
             # A hard failure, so a missing browser is never mistaken for passing checks.
             raise RuntimeError(
-                "No Chrome/Chromium found: set CHROME_BIN to its executable, "
+                "No Chrome/Chromium on PATH or in the usual install locations: set CHROME_BIN "
+                "to its executable, "
                 "or TAB_CAPSULE_SKIP_BROWSER=1 to skip the browser tests."
             )
         cls.temporary = Path(tempfile.mkdtemp(prefix="tab-capsule-browser-"))

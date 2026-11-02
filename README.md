@@ -86,8 +86,10 @@ python3 -m compileall -q tab_capsule tests tab_capsule.py seed.py
 ```
 
 `tests/test_browser.py` opens generated pages in headless Chrome and drives them with
-trusted keyboard and mouse input. It fails if no browser is found: set `CHROME_BIN` to
-the executable, or `TAB_CAPSULE_SKIP_BROWSER=1` to skip only those tests.
+trusted keyboard and mouse input. It finds Chrome or Chromium on `PATH` or in the usual
+install locations (`/Applications` on macOS, `/opt/google/chrome` on Linux), and fails if
+there is none: set `CHROME_BIN` to the executable, or `TAB_CAPSULE_SKIP_BROWSER=1` to
+skip only those tests.
 
 ### Optional tools
 

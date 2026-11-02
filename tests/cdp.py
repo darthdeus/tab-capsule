@@ -28,16 +28,27 @@ CHROME_NAMES = (
     "chromium-browser",
     "chrome",
 )
+# Checked after PATH. macOS apps are not on PATH; ~ is the user's own Applications folder.
+CHROME_LOCATIONS = tuple(
+    f"{root}/{app}.app/Contents/MacOS/{app}"
+    for root in ("/Applications", "~/Applications")
+    for app in ("Google Chrome", "Chromium", "Google Chrome for Testing")
+) + ("/opt/google/chrome/chrome",)
 
 
 def find_chrome() -> str | None:
-    """CHROME_BIN wins; otherwise the first Chrome/Chromium name found on PATH."""
+    """CHROME_BIN wins; then a Chrome/Chromium name on PATH; then the usual install
+    locations, so a standard macOS (/Applications) or Linux (/opt) install needs no setup."""
     if os.environ.get("CHROME_BIN"):
         return os.path.abspath(os.environ["CHROME_BIN"])
     for name in CHROME_NAMES:
         found = shutil.which(name)
         if found:
             return found
+    for location in CHROME_LOCATIONS:
+        path = os.path.expanduser(location)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
     return None
 
 
