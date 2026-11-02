@@ -264,7 +264,7 @@ class TerminalTest(unittest.TestCase):
     def test_browse_runs_in_a_terminal_and_quits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             with contextlib.redirect_stdout(io.StringIO()):
-                demo.main(["--keep-db", "--output-dir", f"{tmp}/archive"])
+                demo.main(["--corpus", "small", "--output-dir", f"{tmp}/archive"])
             pid, fd = pty.fork()
             if pid == 0:  # child: size its terminal before curses reads it, then exec
                 set_winsize(0, rows=24, columns=100)

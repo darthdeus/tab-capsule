@@ -15,8 +15,9 @@ HTML output unless the user chooses otherwise.
 - `tests/test_*.py`, `tests/fixtures.py`: grouped Python tests and synthetic fixtures.
 - `tests/test_browser.py`: headless-Chrome page checks; `tests/cdp.py` is the stdlib
   DevTools-protocol driver (pipe transport, no packages).
-- `demo.py`: repeatable synthetic HTML or persistent seeded archive/fake Chrome profiles.
-- `just seed` / `just sandbox`: isolated developer data and CLI commands; never use real profiles.
+- `demo.py`: with no options rebuilds `demo-output/sandbox` (realistic archive + fake
+  Chrome); `tab_capsule.py --sandbox <cmd>` uses it. `--page-only` writes just the HTML.
+- `just seed` / `just sandbox`: aliases for the above; never use real profiles.
 - `justfile`: development checks, synthetic demo and CLI shortcuts.
 - `tab_capsule/models.py`: shared tab and generated-page type contracts.
 - `pyproject.toml`, `uv.lock`: Python metadata, Ruff/mypy settings and locked dev tools.

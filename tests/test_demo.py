@@ -30,7 +30,15 @@ class DemoTest(unittest.TestCase):
                 ),
             ):
                 self.generate(
-                    output, "--keep-db", "--days", "2", "--visits-per-day", "7", "--profiles", "2"
+                    output,
+                    "--corpus",
+                    "small",
+                    "--days",
+                    "2",
+                    "--visits-per-day",
+                    "7",
+                    "--profiles",
+                    "2",
                 )
             self.assertFalse(unrelated.exists())
             self.assertTrue((output / "chrome" / "Default" / "History").is_file())
@@ -56,7 +64,15 @@ class DemoTest(unittest.TestCase):
             outputs = [Path(tmp) / name for name in ("one", "two")]
             for output in outputs:
                 self.generate(
-                    output, "--keep-db", "--days", "5", "--visits-per-day", "20", "--profiles", "2"
+                    output,
+                    "--corpus",
+                    "small",
+                    "--days",
+                    "5",
+                    "--visits-per-day",
+                    "20",
+                    "--profiles",
+                    "2",
                 )
             self.assertEqual(
                 (outputs[0] / "index.html").read_bytes(), (outputs[1] / "index.html").read_bytes()
@@ -69,7 +85,7 @@ class DemoTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "realistic"
             self.generate(
-                output, "--keep-db", "--corpus", "realistic", "--days", "12",
+                output, "--corpus", "realistic", "--days", "12",
                 "--visits-per-day", "150", "--profiles", "2",
             )  # fmt: skip
             data = render.extract_data((output / "index.html").read_text(encoding="utf-8"))
@@ -119,12 +135,48 @@ class DemoTest(unittest.TestCase):
             outputs = [Path(tmp) / name for name in ("one", "two")]
             for output in outputs:
                 self.generate(
-                    output, "--corpus", "realistic", "--days", "4", "--visits-per-day", "40",
+                    output, "--page-only", "--days", "4", "--visits-per-day", "40",
                     "--profiles", "2",
                 )  # fmt: skip
             self.assertEqual(
                 (outputs[0] / "index.html").read_bytes(), (outputs[1] / "index.html").read_bytes()
             )
+
+    def test_no_options_rebuild_the_sandbox_with_realistic_defaults(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sandbox = Path(tmp) / "checkout" / "demo-output" / "sandbox"
+            with patch.object(cli, "SANDBOX_DIR", sandbox):
+                for _ in range(2):  # a second run replaces the first sandbox
+                    with contextlib.redirect_stdout(io.StringIO()) as log:
+                        self.assertEqual(demo.main([]), sandbox)
+            self.assertIn("tab_capsule.py --sandbox browse", log.getvalue())
+            self.assertTrue((sandbox / cli.SANDBOX_MARKER).is_file())
+            self.assertTrue((sandbox / "chrome" / "Profile 1" / "History").is_file())
+            with contextlib.closing(sqlite3.connect(sandbox / "capsule.db")) as db:
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM visits").fetchone()[0], 6000)
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM profiles").fetchone()[0], 2)
+                distinct = db.execute("SELECT COUNT(DISTINCT url) FROM visits").fetchone()[0]
+            self.assertGreater(distinct, 1000, "realistic corpus by default")
+
+    def test_page_only_defaults_to_demo_output_without_a_database(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(demo, "ROOT", Path(tmp)):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    output = demo.main(["--page-only", "--days", "2"])
+            self.assertEqual(output, Path(tmp) / "demo-output")
+            self.assertEqual([p.name for p in output.iterdir()], ["index.html"])
+
+    def test_replaces_only_directories_a_demo_created(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "demo"
+            self.generate(output, "--corpus", "small")
+            (output / "stray").write_text("from the previous demo", encoding="utf-8")
+            self.generate(output, "--corpus", "small", "--days", "1")
+            self.assertFalse((output / "stray").exists())
+            (output / cli.SANDBOX_MARKER).unlink()
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                self.generate(output, "--corpus", "small")
+            self.assertTrue((output / "capsule.db").is_file())
 
     def test_seed_refuses_existing_archives(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -133,16 +185,16 @@ class DemoTest(unittest.TestCase):
                 storage.set_profile_name(db, "Default", "Preserve this")
             original = (output / "capsule.db").read_bytes()
             with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
-                self.generate(output, "--keep-db")
+                self.generate(output)
             self.assertEqual(error.exception.code, 2)
             self.assertEqual((output / "capsule.db").read_bytes(), original)
 
     def test_small_html_demo_can_be_regenerated_without_leaving_a_database(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "demo"
-            self.generate(output)
+            self.generate(output, "--page-only", "--corpus", "small")
             first = (output / "index.html").read_bytes()
-            self.generate(output)
+            self.generate(output, "--page-only", "--corpus", "small")
             self.assertEqual((output / "index.html").read_bytes(), first)
             self.assertEqual([path.name for path in output.iterdir()], ["index.html"])
             self.assertEqual(len(render.extract_data(first.decode("utf-8"))["V"]), 12)
@@ -156,6 +208,6 @@ class DemoTest(unittest.TestCase):
                     contextlib.redirect_stderr(io.StringIO()),
                     self.assertRaises(SystemExit) as error,
                 ):
-                    self.generate(output, "--keep-db", option, "0")
+                    self.generate(output, option, "0")
                 self.assertEqual(error.exception.code, 2)
                 self.assertFalse(output.exists())

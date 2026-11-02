@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from contextlib import closing
 from pathlib import Path
 
-from tab_capsule import chrome, render, storage
+from tab_capsule import chrome, cli, render, storage
 from tab_capsule.models import Tab
 from tests import corpus
 from tests.fixtures import Snss, make_history
@@ -23,6 +23,7 @@ PAGES = [
     ("https://example.net/game-loop", "Understanding the game loop"),
 ]
 END = datetime.datetime(2026, 9, 4, 12)
+ROOT = Path(__file__).resolve().parent
 
 
 def small_corpus(start: datetime.datetime, days: int, visits_per_day: int) -> corpus.Profile:
@@ -115,50 +116,95 @@ def positive_int(value: str) -> int:
     return number
 
 
-def main(argv: Sequence[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument(
-        "--keep-db", action="store_true", help="keep the archive and fake Chrome profiles"
+DEFAULT_SIZES = {"small": (3, 4, 1), "realistic": (30, 100, 2)}  # days, visits/day, profiles
+
+
+def main(argv: Sequence[str] | None = None) -> Path:
+    """Generate a demo; returns the output directory."""
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="With no options: rebuild the development sandbox, then use it with"
+        " `python3 tab_capsule.py --sandbox browse` (or run, stats, render).",
     )
-    parser.add_argument("--days", type=positive_int, default=3)
     parser.add_argument(
-        "--visits-per-day", type=positive_int, default=4, help="visits per profile/day"
+        "--output-dir",
+        type=Path,
+        help="default: demo-output/sandbox (with --page-only: demo-output)."
+        " An existing directory is replaced only if a previous demo created it.",
     )
-    parser.add_argument("--profiles", type=positive_int, default=1)
+    parser.add_argument(
+        "--page-only",
+        action="store_true",
+        help="write only index.html, without the archive database and fake Chrome profiles",
+    )
     parser.add_argument(
         "--corpus",
-        choices=["small", "realistic"],
-        default="small",
-        help="small: four fixed pages (tests rely on it); realistic: hundreds of invented"
-        " pages with repeat visits, searches and drifting tabs",
+        choices=sorted(DEFAULT_SIZES),
+        default="realistic",
+        help="realistic (default): thousands of invented pages with favourites, searches and"
+        " drifting tabs; small: four fixed pages that the tests rely on",
     )
+    parser.add_argument("--days", type=positive_int, help="default: 30 (small: 3)")
+    parser.add_argument(
+        "--visits-per-day", type=positive_int, help="per profile; default: 100 (small: 4)"
+    )
+    parser.add_argument("--profiles", type=positive_int, help="default: 2 (small: 1)")
     args = parser.parse_args(argv)
-    if args.keep_db and args.output_dir.exists():
-        parser.error("persistent demo output directory must be new; choose another --output-dir")
+    days, visits_per_day, profiles = (
+        given or default
+        for given, default in zip(
+            (args.days, args.visits_per_day, args.profiles), DEFAULT_SIZES[args.corpus]
+        )
+    )
+    output: Path = args.output_dir or (ROOT / "demo-output" if args.page_only else cli.SANDBOX_DIR)
+    if not args.page_only and output.exists() and not (output / cli.SANDBOX_MARKER).is_file():
+        parser.error(f"{output} exists but was not created by demo.py; refusing to replace it")
 
-    # Build everything in a temporary directory; persistent mode copies only completed fixtures.
+    # Build everything in a temporary directory; the output is replaced only when complete.
     with tempfile.TemporaryDirectory(prefix="tab-capsule-demo-") as tmp:
         staging = Path(tmp)
         with closing(storage.open_db(staging)) as db:
             populate(
                 db,
-                days=args.days,
-                visits_per_day=args.visits_per_day,
-                profiles=args.profiles,
-                chrome_dir=staging / "chrome" if args.keep_db else None,
+                days=days,
+                visits_per_day=visits_per_day,
+                profiles=profiles,
+                chrome_dir=None if args.page_only else staging / "chrome",
                 kind=args.corpus,
             )
             data = render.build_data(db)
             data["generated"] = int(END.timestamp())
             (staging / "index.html").write_text(render.render_html(data), encoding="utf-8")
 
-        if args.keep_db:
-            shutil.copytree(staging, args.output_dir)
+        if args.page_only:
+            output.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(staging / "index.html", output / "index.html")
         else:
-            args.output_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(staging / "index.html", args.output_dir / "index.html")
-    print(args.output_dir / "index.html")
+            (staging / cli.SANDBOX_MARKER).write_text(
+                "Synthetic archive generated by demo.py; safe to delete or replace.\n",
+                encoding="utf-8",
+            )
+            if output.exists():
+                shutil.rmtree(output)
+            shutil.copytree(staging, output)
+
+    visits = days * visits_per_day * profiles
+    print(f"{args.corpus} demo: {profiles} profiles × {days} days, {visits:,} visits")
+    print(f"page: {_shown(output / 'index.html')}")
+    script = _shown(ROOT / "tab_capsule.py")
+    if not args.page_only and output == cli.SANDBOX_DIR:
+        print(f"try:  python3 {script} --sandbox browse")
+    elif not args.page_only:
+        print(f"try:  python3 {script} browse --data-dir {_shown(output)}")
+    return output
+
+
+def _shown(path: Path) -> str:
+    """The path relative to the working directory when inside it, else absolute."""
+    try:
+        return str(path.resolve().relative_to(Path.cwd()))
+    except ValueError:
+        return str(path.resolve())
 
 
 if __name__ == "__main__":

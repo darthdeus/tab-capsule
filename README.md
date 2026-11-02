@@ -31,50 +31,44 @@ Keys: `↑↓`/`jk` move, `←→`/`hl`/`Tab` switch between days and entries, `
 or newer day, `PgUp`/`PgDn`, `g`/`G` first/last, `Enter` shows the full URL, `?` help,
 `Esc`/`q` quit. It uses the standard library's curses and needs an interactive
 terminal. It has no search yet; the HTML page does. `snapshot`,
-`import-history`, and `render` can also be run separately. `TAB_CAPSULE_DIR` overrides
-the default data directory. Scheduling is optional; run the command manually or
+`import-history`, and `render` can also be run separately. `TAB_CAPSULE_DIR` and
+`TAB_CAPSULE_CHROME_DIR` override the default data and Chrome directories.
+Scheduling is optional; run the command manually or
 from your own scheduler.
 Collection continues across profiles and returns a nonzero exit status if any
 profile fails; `run` still renders the successfully collected data.
 
 ## Synthetic demo
 
-```sh
-python3 demo.py --output-dir /tmp/tab-capsule-demo
-```
-
-Open `/tmp/tab-capsule-demo/index.html`. The demo uses invented pages and profiles;
-it never reads Chrome. Repeating the command produces the same demo dataset.
-
-For a persistent development workspace, seed a new directory:
+Try the tool, or develop it, without touching your browser data:
 
 ```sh
-just seed                         # 2 profiles × 30 days × 100 visits = 6,000 visits
-just sandbox stats
-just sandbox render
-just sandbox run                  # collect from the generated fake Chrome profiles
+python3 demo.py                              # build the sandbox (about a second)
+python3 tab_capsule.py --sandbox browse      # terminal browser on it
+python3 tab_capsule.py --sandbox stats
+python3 tab_capsule.py --sandbox run         # collect from its fake Chrome profiles
 ```
 
-Open `demo-output/sandbox/index.html`. The directory also contains `capsule.db` and
-`chrome/` with synthetic History databases and session files. `just sandbox` pins
-both CLI paths to this workspace, regardless of your normal data-directory setting.
-All of these generated files are ignored by Git. `just seed` replaces
-`demo-output/sandbox` each time, since it only ever holds seeded data. `demo.py --keep-db`
-itself refuses an existing output directory; choose a new one for another dataset:
+`demo.py` writes `demo-output/sandbox/` in the source checkout (ignored by Git): an
+archive (`capsule.db`), its `index.html` page, and `chrome/` with fake Chrome profiles
+(History databases and session files). `--sandbox` points both `--data-dir` and
+`--chrome-dir` there, so even `run` cannot read your real Chrome. Running `demo.py`
+again rebuilds the sandbox; it only replaces directories that a previous `demo.py`
+created (they contain a `.tab-capsule-demo` marker), never a real archive.
+
+The default realistic corpus (`tests/corpus.py`) has 2 profiles × 30 days × 100 visits:
+thousands of invented pages on familiar kinds of sites, a few favourites visited many
+times a day, a long tail of searches and one-off pages, tabs that drift across windows,
+and short words that often occur inside longer ones. It approximates the shape of a
+real archive without any real history. Other sizes and places:
 
 ```sh
-just seed --output-dir /tmp/tab-capsule-large --days 90 --visits-per-day 1000 --profiles 3
-just cli stats --data-dir /tmp/tab-capsule-large
-# Without just:
-python3 demo.py --keep-db --corpus realistic --output-dir /tmp/tab-capsule-dev --days 30
+python3 demo.py --days 365 --visits-per-day 500 --profiles 1    # a year-sized archive
+python3 demo.py --output-dir /tmp/tc-large --days 90            # elsewhere
+python3 tab_capsule.py browse --data-dir /tmp/tc-large
+python3 demo.py --page-only                  # just demo-output/index.html, no database
+python3 demo.py --corpus small --page-only   # the fixed four-page demo the tests use
 ```
-
-`just seed` uses `--corpus realistic` (`tests/corpus.py`): thousands of invented pages
-on familiar kinds of sites, a few favourites visited many times a day, a long tail of
-searches and one-off pages, tabs that drift across windows, and short words that often
-occur inside longer ones. It approximates the shape of a real archive without any real
-history. The default `--corpus small` is the fixed four-page demo used by the browser
-tests. Without just: `python3 demo.py --keep-db --corpus realistic --output-dir DIR`.
 
 Data is repeatable for the same options and local timezone. The seeder reuses the
 synthetic Chrome builders in `tests/fixtures.py`; it needs no installed browser.
@@ -108,6 +102,7 @@ just test-python     # tests without a browser
 just test-browser    # only the headless-Chrome checks
 just format          # format Python sources
 just demo            # synthetic page at demo-output/index.html
+just seed            # python3 demo.py; just sandbox browse = tab_capsule.py --sandbox browse
 just cli --help      # CLI help; e.g. just cli render --data-dir /path/to/archive
 just                 # list all recipes
 ```

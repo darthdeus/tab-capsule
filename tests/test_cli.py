@@ -133,3 +133,62 @@ class CliTest(unittest.TestCase):
             self.assertEqual(db.execute("SELECT name FROM profiles").fetchone()[0], "Alex")
             db.close()
             self.assertTrue(os.path.isfile(os.path.join(data, "index.html")))
+
+
+class SandboxTest(unittest.TestCase):
+    """--sandbox pins both directories to the synthetic archive made by demo.py."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.sandbox = self.tmp / "sandbox"
+        patcher = patch.object(cli, "SANDBOX_DIR", self.sandbox)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def cli(self, *argv):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            status = cli.main(list(argv))
+        return status, out.getvalue()
+
+    def seed(self):
+        import demo
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            demo.main(["--corpus", "small", "--profiles", "2"])
+
+    def test_sandbox_uses_its_own_archive_and_fake_chrome(self):
+        self.seed()
+        real = self.tmp / "real archive"
+        with (
+            patch.dict(os.environ, TAB_CAPSULE_DIR=str(real), TAB_CAPSULE_CHROME_DIR="/nowhere"),
+            patch.object(cli, "DEFAULT_CHROME_DIR", "/nowhere"),
+        ):
+            status, out = self.cli("run", "--sandbox")
+            self.assertEqual(status, 0, out)
+            self.assertEqual(out.count("(unchanged)"), 2)
+            self.assertEqual(out.count("+0 visits"), 2)
+            status, out = self.cli("stats", "--sandbox")
+        self.assertIn("Default (Demo): 12 visits", out)
+        self.assertFalse(real.exists())
+
+    def test_sandbox_must_exist_and_cannot_be_combined_with_directories(self):
+        for argv in (["stats", "--sandbox"], ["stats", "--sandbox", "--data-dir", str(self.tmp)]):
+            with (
+                self.subTest(argv=argv),
+                contextlib.redirect_stderr(io.StringIO()) as err,
+                self.assertRaises(SystemExit) as exit,
+            ):
+                cli.main(argv)
+            self.assertEqual(exit.exception.code, 2)
+            self.assertIn("sandbox", err.getvalue())
+        self.assertFalse(self.sandbox.exists())
+
+    def test_chrome_dir_environment_variable(self):
+        self.seed()
+        archive = self.tmp / "archive"
+        with patch.dict(os.environ, TAB_CAPSULE_CHROME_DIR=str(self.sandbox / "chrome")):
+            status, out = self.cli("import-history", "--data-dir", str(archive))
+        self.assertEqual(status, 0, out)
+        self.assertIn("Default: +12 visits", out)

@@ -6,19 +6,17 @@ python := env_var_or_default("PYTHON", "python")
 default:
     @just --list
 
-# Generate a standalone demo using only synthetic data.
+# Generate a standalone demo page (no database) using only synthetic data.
 demo output_dir="demo-output":
-    uv run --locked {{ quote(python) }} demo.py --output-dir "$1"
+    uv run --locked {{ quote(python) }} demo.py --page-only --output-dir "$1"
 
-# Rebuild the isolated sandbox: a realistic archive and fake Chrome profiles (30 days, 6,000 visits by default).
+# Rebuild the sandbox: a realistic synthetic archive with fake Chrome profiles (same as `python3 demo.py`).
 seed *args:
-    rm -rf demo-output/sandbox
-    uv run --locked {{ quote(python) }} demo.py --keep-db --corpus realistic --output-dir demo-output/sandbox --days 30 --visits-per-day 100 --profiles 2 "$@"
+    uv run --locked {{ quote(python) }} demo.py "$@"
 
-# Run the CLI against seeded data; both paths are pinned to the synthetic workspace.
+# Run the CLI on the sandbox, e.g. `just sandbox browse` (same as `python3 tab_capsule.py --sandbox ...`).
 sandbox *args:
-    test -f demo-output/sandbox/capsule.db
-    uv run --locked {{ quote(python) }} tab_capsule.py "$@" --data-dir demo-output/sandbox --chrome-dir demo-output/sandbox/chrome
+    uv run --locked {{ quote(python) }} tab_capsule.py --sandbox "$@"
 
 # Install the Python development tools (Ruff, mypy); tests need none of them.
 setup:

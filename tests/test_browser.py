@@ -37,7 +37,7 @@ class BrowserTest(unittest.TestCase):
             )
         cls.temporary = Path(tempfile.mkdtemp(prefix="tab-capsule-browser-"))
         output = cls.temporary / "generated"
-        cls.generate(output)
+        cls.generate(output, "--page-only", "--corpus", "small")
         # Move just the HTML, then remove its original directory: no server or sidecars.
         cls.demo = cls.temporary / "standalone.html"
         (output / "index.html").rename(cls.demo)
@@ -214,7 +214,7 @@ class BrowserTest(unittest.TestCase):
     def test_persistent_seeded_data_renders_multiple_profiles_and_can_be_searched(self) -> None:
         output = self.temporary / "seeded"
         self.generate(
-            output, "--keep-db", "--days", "2", "--visits-per-day", "7", "--profiles", "2"
+            output, "--corpus", "small", "--days", "2", "--visits-per-day", "7", "--profiles", "2"
         )
         page = self.open_archive(output / "index.html")
         self.assertEqual(page.inner_text("#main > .sub"), "14 history visits")
@@ -228,7 +228,7 @@ class BrowserTest(unittest.TestCase):
     def test_realistic_corpus_renders_and_reports_search_counts(self) -> None:
         output = self.temporary / "realistic"
         self.generate(
-            output, "--corpus", "realistic", "--days", "5", "--visits-per-day", "80",
+            output, "--page-only", "--days", "5", "--visits-per-day", "80",
             "--profiles", "2",
         )  # fmt: skip
         page = self.open_archive(output / "index.html")
