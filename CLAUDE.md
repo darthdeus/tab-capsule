@@ -34,6 +34,10 @@ development tools out of runtime dependencies. Type checking covers `tab_capsule
 `seed.py`; use Python 3.10-compatible annotations. Frontend behavior changes need
 browser checks in `tests/test_browser.py`.
 
+Synthetic data (`tests/corpus.py`, fixtures, demo pages) must be generic: never derive
+topics, sites, names or habits from the owner's real history or personal interests.
+The realistic corpus is a generic game/web developer; match a real archive's statistical
+shape (counts, repeats, mid-word matches), not its content.
 Never read actual Chrome profiles for tests. Use temporary directories and synthetic
 records. Never commit capsule.db, generated history pages, browser sessions or real
 URLs from the user's history. Keep CLI overrides working. Avoid unrelated rewrites.

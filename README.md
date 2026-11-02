@@ -56,8 +56,8 @@ archive (`capsule.db`), its `index.html` page, and `chrome/` with fake Chrome pr
 again rebuilds the sandbox; it only replaces directories that a previous `seed.py`
 created (they contain a `.tab-capsule-seed` marker), never a real archive.
 
-The default realistic corpus (`tests/corpus.py`) has 2 profiles × 30 days × 100 visits:
-thousands of invented pages on familiar kinds of sites, a few favourites visited many
+The default realistic corpus (`tests/corpus.py`) has 2 profiles × 30 days × 100 visits
+by a generic game/web developer: thousands of invented pages on familiar kinds of sites, a few favourites visited many
 times a day, a long tail of searches and one-off pages, tabs that drift across windows,
 and short words that often occur inside longer ones. It approximates the shape of a
 real archive without any real history. Other sizes and places:
